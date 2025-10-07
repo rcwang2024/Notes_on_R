@@ -1,0 +1,743 @@
+---
+title: "Data Visualization in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 8, fig.height = 6)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+```
+
+# 1. Base R Graphics
+
+Base R provides quick plotting capabilities without additional packages.
+
+## Basic Plots
+
+```{r}
+# Sample data
+set.seed(123)
+x <- rnorm(100)
+y <- x + rnorm(100)
+groups <- sample(c("A", "B", "C"), 100, replace = TRUE)
+
+# Scatter plot
+plot(x, y)
+plot(x, y, main = "Scatter Plot", xlab = "X Variable", ylab = "Y Variable")
+
+# With colors and points
+plot(x, y, col = "blue", pch = 16, cex = 1.5)
+
+# Line plot
+plot(1:10, (1:10)^2, type = "l")
+plot(1:10, (1:10)^2, type = "b")  # Both points and lines
+
+# Multiple plots
+plot(x, y, col = as.factor(groups), pch = 16)
+legend("topleft", legend = unique(groups), col = 1:3, pch = 16)
+```
+
+## Histogram
+
+```{r}
+# Basic histogram
+hist(x)
+
+# Customized
+hist(x, breaks = 20, col = "lightblue", main = "Distribution",
+     xlab = "Value", border = "white")
+
+# Add density line
+hist(x, breaks = 20, col = "lightblue", freq = FALSE)
+lines(density(x), col = "red", lwd = 2)
+```
+
+## Boxplot
+
+```{r}
+# Basic boxplot
+boxplot(rnorm(100))
+
+# Grouped boxplot
+boxplot(y ~ groups, main = "Boxplot by Group",
+        col = c("lightblue", "lightgreen", "lightpink"))
+
+# Horizontal
+boxplot(y ~ groups, horizontal = TRUE)
+```
+
+## Barplot
+
+```{r}
+# Simple barplot
+counts <- table(groups)
+barplot(counts, col = "steelblue", main = "Counts by Group")
+
+# Grouped barplot
+data_matrix <- matrix(c(3, 5, 7, 4, 6, 8), nrow = 2)
+barplot(data_matrix, beside = TRUE, col = c("lightblue", "lightpink"),
+        legend.text = c("Group 1", "Group 2"))
+```
+
+## Par() for Multiple Plots
+
+```{r}
+# Set up 2x2 plotting area
+par(mfrow = c(2, 2))
+plot(x, y, main = "Scatter")
+hist(x, main = "Histogram")
+boxplot(x, main = "Boxplot")
+barplot(counts, main = "Barplot")
+
+# Reset
+par(mfrow = c(1, 1))
+```
+
+# 2. ggplot2 - Grammar of Graphics
+
+ggplot2 is the most powerful and flexible visualization package in R.
+
+```{r}
+library(ggplot2)
+```
+
+## ggplot2 Basics
+
+The grammar consists of:
+- **Data**: The dataset
+- **Aesthetics** (aes): Mappings (x, y, color, size, etc.)
+- **Geoms**: Geometric objects (points, lines, bars, etc.)
+- **Scales**: Control aesthetic mappings
+- **Themes**: Overall visual appearance
+
+## Scatter Plots
+
+```{r}
+# Basic scatter plot
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point()
+
+# With color by group
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point()
+
+# With size and transparency
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl), size = hp)) +
+  geom_point(alpha = 0.6)
+
+# Add smooth line
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  geom_smooth(method = "lm", se = TRUE)
+
+# Different smoothers per group
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point() +
+  geom_smooth(method = "lm")
+```
+
+## Line Plots
+
+```{r}
+# Time series example
+time_data <- data.frame(
+  time = 1:100,
+  value = cumsum(rnorm(100)),
+  group = rep(c("A", "B"), each = 50)
+)
+
+ggplot(time_data, aes(x = time, y = value)) +
+  geom_line()
+
+# Multiple lines
+ggplot(time_data, aes(x = time, y = value, color = group)) +
+  geom_line(linewidth = 1)
+
+# With points
+ggplot(time_data, aes(x = time, y = value, color = group)) +
+  geom_line() +
+  geom_point()
+```
+
+## Bar Plots
+
+```{r}
+# Count bar plot
+ggplot(mtcars, aes(x = factor(cyl))) +
+  geom_bar()
+
+# With fill color
+ggplot(mtcars, aes(x = factor(cyl), fill = factor(gear))) +
+  geom_bar()
+
+# Stacked vs dodged
+ggplot(mtcars, aes(x = factor(cyl), fill = factor(gear))) +
+  geom_bar(position = "dodge")
+
+# Bar plot with values
+summary_data <- mtcars %>%
+  group_by(cyl) %>%
+  summarise(mean_mpg = mean(mpg))
+
+ggplot(summary_data, aes(x = factor(cyl), y = mean_mpg)) +
+  geom_col(fill = "steelblue") +
+  geom_text(aes(label = round(mean_mpg, 1)), vjust = -0.5)
+```
+
+## Histograms and Density Plots
+
+```{r}
+# Histogram
+ggplot(mtcars, aes(x = mpg)) +
+  geom_histogram(bins = 20, fill = "steelblue", color = "white")
+
+# Density plot
+ggplot(mtcars, aes(x = mpg)) +
+  geom_density(fill = "steelblue", alpha = 0.5)
+
+# Overlapping densities
+ggplot(mtcars, aes(x = mpg, fill = factor(cyl))) +
+  geom_density(alpha = 0.5)
+
+# Histogram with density
+ggplot(mtcars, aes(x = mpg)) +
+  geom_histogram(aes(y = after_stat(density)), bins = 20, fill = "lightblue") +
+  geom_density(color = "red", linewidth = 1)
+```
+
+## Boxplots and Violin Plots
+
+```{r}
+# Boxplot
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_boxplot()
+
+# With color
+ggplot(mtcars, aes(x = factor(cyl), y = mpg, fill = factor(cyl))) +
+  geom_boxplot()
+
+# With points
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_boxplot() +
+  geom_jitter(width = 0.2, alpha = 0.5)
+
+# Violin plot
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_violin()
+
+# Violin + boxplot
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_violin() +
+  geom_boxplot(width = 0.2)
+```
+
+## Faceting
+
+```{r}
+# Facet wrap (one variable)
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  facet_wrap(~ cyl)
+
+# Facet wrap with custom layout
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  facet_wrap(~ cyl, ncol = 2)
+
+# Facet grid (two variables)
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  facet_grid(gear ~ cyl)
+
+# Free scales
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  facet_wrap(~ cyl, scales = "free")
+```
+
+## Customization
+
+### Themes
+
+```{r}
+p <- ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3)
+
+# Built-in themes
+p + theme_bw()
+p + theme_minimal()
+p + theme_classic()
+p + theme_dark()
+
+# Custom theme modifications
+p + theme_minimal() +
+  theme(
+    legend.position = "bottom",
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    axis.text = element_text(size = 12)
+  )
+```
+
+### Labels and Titles
+
+```{r}
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3) +
+  labs(
+    title = "Fuel Efficiency by Weight",
+    subtitle = "Motor Trend Car Road Tests",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon",
+    color = "Cylinders",
+    caption = "Source: mtcars dataset"
+  )
+```
+
+### Scales
+
+```{r}
+# Color scales
+ggplot(mtcars, aes(x = wt, y = mpg, color = hp)) +
+  geom_point(size = 3) +
+  scale_color_gradient(low = "blue", high = "red")
+
+# Manual colors
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3) +
+  scale_color_manual(values = c("red", "green", "blue"))
+
+# Brewer color palettes
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1")
+
+# Axis scales
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  scale_x_continuous(breaks = seq(0, 6, 1)) +
+  scale_y_continuous(limits = c(0, 40))
+
+# Log scale
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  scale_y_log10()
+```
+
+### Coordinate Systems
+
+```{r}
+# Flip coordinates
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_boxplot() +
+  coord_flip()
+
+# Fixed aspect ratio
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  coord_fixed(ratio = 1/5)
+
+# Polar coordinates (for pie charts)
+df <- data.frame(
+  category = c("A", "B", "C"),
+  value = c(30, 40, 30)
+)
+
+ggplot(df, aes(x = "", y = value, fill = category)) +
+  geom_col() +
+  coord_polar(theta = "y")
+```
+
+## Advanced ggplot2
+
+### Error Bars
+
+```{r}
+summary_stats <- mtcars %>%
+  group_by(cyl) %>%
+  summarise(
+    mean_mpg = mean(mpg),
+    se = sd(mpg) / sqrt(n())
+  )
+
+ggplot(summary_stats, aes(x = factor(cyl), y = mean_mpg)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_mpg - se, ymax = mean_mpg + se),
+                width = 0.2)
+
+# Point range
+ggplot(summary_stats, aes(x = factor(cyl), y = mean_mpg)) +
+  geom_pointrange(aes(ymin = mean_mpg - se, ymax = mean_mpg + se))
+```
+
+### Annotations
+
+```{r}
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  annotate("text", x = 4, y = 30, label = "High efficiency zone",
+           color = "red") +
+  annotate("rect", xmin = 1.5, xmax = 3, ymin = 25, ymax = 35,
+           alpha = 0.2, fill = "blue")
+```
+
+### Statistical Transformations
+
+```{r}
+# Regression line with equation
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  geom_smooth(method = "lm", formula = y ~ x) +
+  stat_poly_eq(formula = y ~ x, parse = TRUE)
+
+# Confidence intervals
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point() +
+  stat_summary(fun.data = mean_se, geom = "errorbar", width = 0.2)
+```
+
+# 3. Heatmaps
+
+## Basic Heatmap with ggplot2
+
+```{r}
+# Create matrix data
+set.seed(123)
+mat_data <- matrix(rnorm(100), nrow = 10)
+rownames(mat_data) <- paste0("Gene", 1:10)
+colnames(mat_data) <- paste0("Sample", 1:10)
+
+# Convert to long format for ggplot2
+heatmap_data <- as.data.frame(mat_data) %>%
+  tibble::rownames_to_column("Gene") %>%
+  pivot_longer(-Gene, names_to = "Sample", values_to = "Expression")
+
+ggplot(heatmap_data, aes(x = Sample, y = Gene, fill = Expression)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+## pheatmap Package
+
+```{r}
+library(pheatmap)
+
+# Basic heatmap
+pheatmap(mat_data)
+
+# With clustering
+pheatmap(mat_data, clustering_distance_rows = "euclidean",
+         clustering_distance_cols = "euclidean",
+         clustering_method = "complete")
+
+# With annotations
+annotation_row <- data.frame(
+  GeneType = rep(c("TypeA", "TypeB"), each = 5),
+  row.names = rownames(mat_data)
+)
+
+annotation_col <- data.frame(
+  Condition = rep(c("Control", "Treatment"), each = 5),
+  row.names = colnames(mat_data)
+)
+
+pheatmap(mat_data,
+         annotation_row = annotation_row,
+         annotation_col = annotation_col,
+         scale = "row")
+```
+
+## ComplexHeatmap Package
+
+```{r eval=FALSE}
+library(ComplexHeatmap)
+
+# Advanced heatmap
+Heatmap(mat_data,
+        name = "Expression",
+        col = circlize::colorRamp2(c(-2, 0, 2), c("blue", "white", "red")),
+        cluster_rows = TRUE,
+        cluster_columns = TRUE,
+        show_row_names = TRUE,
+        show_column_names = TRUE)
+
+# Multiple heatmaps
+ht1 <- Heatmap(mat_data[, 1:5], name = "Control")
+ht2 <- Heatmap(mat_data[, 6:10], name = "Treatment")
+ht1 + ht2
+```
+
+# 4. Specialized Bioinformatics Plots
+
+## Volcano Plot
+
+```{r}
+# Simulate differential expression data
+set.seed(123)
+volcano_data <- data.frame(
+  gene = paste0("Gene", 1:1000),
+  log2FC = rnorm(1000, mean = 0, sd = 1),
+  pvalue = runif(1000, 0, 1)
+) %>%
+  mutate(
+    padj = p.adjust(pvalue, method = "BH"),
+    significant = padj < 0.05 & abs(log2FC) > 1
+  )
+
+ggplot(volcano_data, aes(x = log2FC, y = -log10(padj), color = significant)) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = c("gray", "red")) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed") +
+  labs(title = "Volcano Plot", x = "Log2 Fold Change", y = "-Log10 Adjusted P-value") +
+  theme_minimal()
+```
+
+## MA Plot
+
+```{r}
+# MA plot (log ratio vs mean average)
+ma_data <- data.frame(
+  A = runif(1000, 0, 15),  # Average expression
+  M = rnorm(1000, 0, 1)     # Log fold change
+)
+
+ggplot(ma_data, aes(x = A, y = M)) +
+  geom_point(alpha = 0.3) +
+  geom_hline(yintercept = 0, color = "red") +
+  geom_hline(yintercept = c(-1, 1), linetype = "dashed", color = "blue") +
+  labs(title = "MA Plot", x = "Average Expression", y = "Log Fold Change") +
+  theme_minimal()
+```
+
+## Manhattan Plot (GWAS)
+
+```{r}
+# Simulate GWAS data
+set.seed(123)
+manhattan_data <- data.frame(
+  chr = rep(1:22, each = 100),
+  pos = rep(1:100, 22),
+  pvalue = runif(2200, 1e-10, 1)
+) %>%
+  mutate(
+    logp = -log10(pvalue)
+  )
+
+ggplot(manhattan_data, aes(x = pos, y = logp, color = factor(chr))) +
+  geom_point(alpha = 0.6) +
+  facet_grid(. ~ chr, scales = "free_x", space = "free_x") +
+  geom_hline(yintercept = -log10(5e-8), linetype = "dashed", color = "red") +
+  labs(title = "Manhattan Plot", x = "Chromosome Position", y = "-Log10 P-value") +
+  theme_minimal() +
+  theme(legend.position = "none",
+        axis.text.x = element_blank(),
+        panel.spacing = unit(0.1, "lines"))
+```
+
+# 5. Interactive Visualizations
+
+## plotly
+
+```{r eval=FALSE}
+library(plotly)
+
+# Convert ggplot to plotly
+p <- ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3)
+
+ggplotly(p)
+
+# Native plotly
+plot_ly(mtcars, x = ~wt, y = ~mpg, color = ~factor(cyl),
+        type = "scatter", mode = "markers")
+
+# 3D scatter
+plot_ly(mtcars, x = ~wt, y = ~mpg, z = ~hp, color = ~factor(cyl),
+        type = "scatter3d", mode = "markers")
+```
+
+## ggiraph (Interactive ggplot2)
+
+```{r eval=FALSE}
+library(ggiraph)
+
+# Create interactive plot
+p <- ggplot(mtcars, aes(x = wt, y = mpg, tooltip = rownames(mtcars))) +
+  geom_point_interactive(aes(data_id = rownames(mtcars)), size = 3)
+
+girafe(ggobj = p)
+```
+
+# 6. Multi-panel Figures
+
+## patchwork Package
+
+```{r}
+library(patchwork)
+
+# Create plots
+p1 <- ggplot(mtcars, aes(x = wt, y = mpg)) + geom_point() + ggtitle("Plot 1")
+p2 <- ggplot(mtcars, aes(x = factor(cyl))) + geom_bar() + ggtitle("Plot 2")
+p3 <- ggplot(mtcars, aes(x = factor(cyl), y = mpg)) + geom_boxplot() + ggtitle("Plot 3")
+
+# Combine plots
+p1 + p2 + p3
+
+# Custom layout
+(p1 | p2) / p3
+
+# With common legend
+p1 + p2 + plot_layout(guides = "collect")
+```
+
+## cowplot Package
+
+```{r}
+library(cowplot)
+
+# Arrange plots in grid
+plot_grid(p1, p2, p3, labels = c("A", "B", "C"), ncol = 2)
+
+# With different sizes
+plot_grid(p1, p2, p3, labels = c("A", "B", "C"),
+          ncol = 2, rel_widths = c(1, 1.5))
+```
+
+# 7. Saving Plots
+
+```{r eval=FALSE}
+# Save ggplot2 plot
+p <- ggplot(mtcars, aes(x = wt, y = mpg)) + geom_point()
+
+ggsave("plot.png", p, width = 8, height = 6, dpi = 300)
+ggsave("plot.pdf", p, width = 8, height = 6)
+ggsave("plot.svg", p, width = 8, height = 6)
+
+# Save base R plot
+png("baseplot.png", width = 800, height = 600, res = 120)
+plot(mtcars$wt, mtcars$mpg)
+dev.off()
+
+# PDF for multiple pages
+pdf("multipage.pdf", width = 8, height = 6)
+plot(mtcars$wt, mtcars$mpg)
+hist(mtcars$mpg)
+dev.off()
+```
+
+# 8. Best Practices
+
+## Color Palettes
+
+```{r}
+library(RColorBrewer)
+
+# Display all palettes
+# display.brewer.all()
+
+# Use ColorBrewer palettes
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1")
+
+# Viridis (colorblind-friendly)
+library(viridis)
+ggplot(mtcars, aes(x = wt, y = mpg, color = hp)) +
+  geom_point(size = 3) +
+  scale_color_viridis_c()
+```
+
+## Accessibility
+
+```{r}
+# Use colorblind-friendly palettes
+# Avoid red-green combinations
+# Use shapes in addition to colors
+
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl), shape = factor(cyl))) +
+  geom_point(size = 3) +
+  scale_color_viridis_d()
+```
+
+## Publication-Quality Figures
+
+```{r}
+# Clean, minimal theme
+# High resolution (300+ dpi)
+# Clear labels and titles
+# Appropriate figure size
+
+p <- ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point(size = 2) +
+  geom_smooth(method = "lm", color = "black") +
+  labs(
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon",
+    title = "Fuel Efficiency vs Vehicle Weight"
+  ) +
+  theme_classic() +
+  theme(
+    text = element_text(size = 12),
+    plot.title = element_text(hjust = 0.5, face = "bold")
+  )
+
+p
+
+# ggsave("figure1.png", p, width = 6, height = 4, dpi = 300)
+```
+
+# Summary
+
+This document covered comprehensive data visualization:
+
+**Base R Graphics**:
+- Quick and simple
+- plot(), hist(), boxplot(), barplot()
+- Good for exploratory analysis
+
+**ggplot2**:
+- Grammar of graphics
+- Highly customizable
+- Layered approach
+- Best for publication-quality figures
+
+**Specialized Plots**:
+- Heatmaps (pheatmap, ComplexHeatmap)
+- Volcano plots, MA plots, Manhattan plots
+- Bioinformatics-specific visualizations
+
+**Interactive**:
+- plotly for web-based interaction
+- ggiraph for interactive ggplot2
+
+**Multi-panel**:
+- patchwork for combining plots
+- cowplot for complex layouts
+
+**Best Practices**:
+- Use appropriate plot types
+- Choose colorblind-friendly palettes
+- Clear labels and titles
+- High resolution for publications
+- Consider your audience
+
+**Next Steps**: Proceed to Statistical Analysis to learn hypothesis testing, regression, and more.
+
+# References
+
+- [ggplot2 documentation](https://ggplot2.tidyverse.org/)
+- [R Graphics Cookbook](https://r-graphics.org/)
+- [Data Visualization with ggplot2 Cheat Sheet](https://github.com/rstudio/cheatsheets)
+- [Fundamentals of Data Visualization by Claus Wilke](https://clauswilke.com/dataviz/)

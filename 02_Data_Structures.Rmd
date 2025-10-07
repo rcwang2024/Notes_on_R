@@ -1,0 +1,817 @@
+---
+title: "Data Structures in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# Overview of R Data Structures
+
+R has several fundamental data structures that differ in:
+
+1. **Dimensionality**: 1D, 2D, or nD
+2. **Homogeneity**: All elements same type (atomic) vs. mixed types (heterogeneous)
+
+| Dimension | Homogeneous | Heterogeneous |
+|-----------|-------------|---------------|
+| 1D        | Atomic Vector | List |
+| 2D        | Matrix      | Data Frame |
+| nD        | Array       | - |
+
+# 1. Vectors
+
+Vectors are the most basic data structure in R. Everything in R is built from vectors.
+
+## Atomic Vectors
+
+There are six types of atomic vectors: logical, integer, double, character, complex, and raw.
+
+### Numeric Vectors (Double)
+
+```{r}
+# Create numeric vector
+x <- c(1.5, 2.7, 3.9, 4.2)
+x
+
+# Check type
+typeof(x)
+class(x)
+
+# Check if numeric
+is.numeric(x)
+is.double(x)
+
+# Vector arithmetic
+x * 2
+x + 10
+sqrt(x)
+```
+
+### Integer Vectors
+
+```{r}
+# Create integer vector (must use L suffix)
+y <- c(1L, 2L, 3L, 4L)
+y
+
+typeof(y)
+is.integer(y)
+
+# Coercion from numeric to integer
+z <- as.integer(c(1.5, 2.7, 3.9))
+z
+```
+
+### Character Vectors
+
+```{r}
+# Create character vector
+genes <- c("TP53", "BRCA1", "EGFR", "KRAS")
+genes
+
+typeof(genes)
+is.character(genes)
+
+# String operations
+nchar(genes)  # Number of characters
+toupper(genes)
+tolower(genes)
+paste("Gene:", genes)
+```
+
+### Logical Vectors
+
+```{r}
+# Create logical vector
+flags <- c(TRUE, FALSE, TRUE, TRUE, FALSE)
+flags
+
+typeof(flags)
+is.logical(flags)
+
+# Logical operations
+!flags  # NOT
+flags & c(TRUE, TRUE, FALSE, FALSE, TRUE)  # AND
+flags | c(FALSE, FALSE, FALSE, FALSE, FALSE)  # OR
+
+# Sum and mean of logical vectors (TRUE = 1, FALSE = 0)
+sum(flags)  # Count TRUEs
+mean(flags)  # Proportion of TRUEs
+```
+
+## Vector Creation Methods
+
+```{r}
+# Using c() - combine
+v1 <- c(1, 2, 3, 4, 5)
+
+# Using : operator for sequences
+v2 <- 1:10
+v2
+
+# Using seq() for more control
+v3 <- seq(from = 0, to = 1, by = 0.1)
+v3
+
+v4 <- seq(from = 0, to = 1, length.out = 11)
+v4
+
+# Using rep() for repetition
+v5 <- rep(1, times = 5)
+v5
+
+v6 <- rep(c(1, 2, 3), times = 3)
+v6
+
+v7 <- rep(c(1, 2, 3), each = 3)
+v7
+
+# Vector of specific length
+v8 <- vector("numeric", length = 5)
+v8
+
+# Random vectors
+set.seed(123)
+rnorm(5)  # Normal distribution
+runif(5)  # Uniform distribution
+sample(1:10, 5)  # Random sample
+```
+
+## Vector Properties
+
+```{r}
+x <- c(10, 20, 30, 40, 50)
+
+# Length
+length(x)
+
+# Type and class
+typeof(x)
+class(x)
+
+# Structure
+str(x)
+
+# Names
+names(x) <- c("a", "b", "c", "d", "e")
+x
+names(x)
+```
+
+## Vector Indexing and Subsetting
+
+```{r}
+x <- c(10, 20, 30, 40, 50)
+
+# By position (1-indexed)
+x[1]
+x[3]
+x[c(1, 3, 5)]
+
+# By negative indices (exclude)
+x[-1]
+x[-c(1, 3)]
+
+# By logical vector
+x[c(TRUE, FALSE, TRUE, FALSE, TRUE)]
+x[x > 25]
+
+# By names
+names(x) <- c("a", "b", "c", "d", "e")
+x["a"]
+x[c("a", "c", "e")]
+
+# Modifying elements
+x[1] <- 100
+x
+
+x[x < 30] <- 0
+x
+```
+
+## Vector Coercion
+
+When you combine different types, R coerces to the most flexible type:
+logical → integer → double → character
+
+```{r}
+# Automatic coercion
+c(1, 2, "3")  # Becomes character
+c(TRUE, FALSE, 1)  # Becomes numeric
+c(1L, 2.5)  # Becomes double
+
+# Explicit coercion
+as.numeric(c("1", "2", "3"))
+as.character(c(1, 2, 3))
+as.logical(c(0, 1, 2, 0))  # 0 = FALSE, non-zero = TRUE
+```
+
+# 2. Matrices
+
+Matrices are 2D homogeneous data structures.
+
+## Creating Matrices
+
+```{r}
+# From vector with dimensions
+m1 <- matrix(1:12, nrow = 3, ncol = 4)
+m1
+
+# By rows instead of columns
+m2 <- matrix(1:12, nrow = 3, ncol = 4, byrow = TRUE)
+m2
+
+# From combining vectors
+v1 <- c(1, 2, 3)
+v2 <- c(4, 5, 6)
+v3 <- c(7, 8, 9)
+
+m3 <- rbind(v1, v2, v3)  # Row bind
+m3
+
+m4 <- cbind(v1, v2, v3)  # Column bind
+m4
+
+# Identity matrix
+diag(5)
+
+# Matrix of specific values
+matrix(0, nrow = 3, ncol = 4)
+```
+
+## Matrix Properties
+
+```{r}
+m <- matrix(1:12, nrow = 3, ncol = 4)
+
+# Dimensions
+dim(m)
+nrow(m)
+ncol(m)
+
+# Row and column names
+rownames(m) <- c("row1", "row2", "row3")
+colnames(m) <- c("col1", "col2", "col3", "col4")
+m
+
+# Check if matrix
+is.matrix(m)
+class(m)
+```
+
+## Matrix Indexing
+
+```{r}
+m <- matrix(1:12, nrow = 3, ncol = 4)
+
+# Single element
+m[2, 3]
+
+# Entire row
+m[2, ]
+
+# Entire column
+m[, 3]
+
+# Multiple rows/columns
+m[c(1, 3), c(2, 4)]
+
+# Logical indexing
+m[m > 6]
+
+# With names
+rownames(m) <- c("A", "B", "C")
+colnames(m) <- c("W", "X", "Y", "Z")
+m["B", "Y"]
+```
+
+## Matrix Operations
+
+```{r}
+m1 <- matrix(1:4, nrow = 2)
+m2 <- matrix(5:8, nrow = 2)
+
+# Element-wise operations
+m1 + m2
+m1 * m2  # Element-wise multiplication
+m1 / m2
+
+# Matrix multiplication
+m1 %*% m2
+
+# Transpose
+t(m1)
+
+# Determinant
+det(m1)
+
+# Inverse
+solve(m1)
+
+# Eigenvalues and eigenvectors
+eigen(m1)
+
+# Row and column operations
+colSums(m1)
+rowSums(m1)
+colMeans(m1)
+rowMeans(m1)
+
+# Apply function to rows or columns
+apply(m1, 1, sum)  # Apply to rows (1)
+apply(m1, 2, sum)  # Apply to columns (2)
+```
+
+# 3. Arrays
+
+Arrays are nD extensions of matrices.
+
+## Creating Arrays
+
+```{r}
+# 3D array
+arr <- array(1:24, dim = c(3, 4, 2))
+arr
+
+# Check dimensions
+dim(arr)
+
+# Array indexing
+arr[2, 3, 1]
+arr[, , 1]  # First "slice"
+arr[, , 2]  # Second "slice"
+```
+
+# 4. Lists
+
+Lists can contain elements of different types and structures.
+
+## Creating Lists
+
+```{r}
+# Simple list
+my_list <- list(
+  numbers = 1:5,
+  characters = c("a", "b", "c"),
+  logical = c(TRUE, FALSE),
+  matrix = matrix(1:6, nrow = 2)
+)
+my_list
+
+# List structure
+str(my_list)
+
+# Unnamed list
+list(1:5, "a", TRUE)
+```
+
+## List Indexing
+
+```{r}
+# Single bracket [ ] returns a list
+my_list[1]
+class(my_list[1])
+
+# Double bracket [[ ]] returns the element itself
+my_list[[1]]
+class(my_list[[1]])
+
+# Dollar sign $ for named elements
+my_list$numbers
+my_list$matrix
+
+# Multiple elements
+my_list[c(1, 3)]
+
+# By name
+my_list["numbers"]
+```
+
+## List Operations
+
+```{r}
+# Add element
+my_list$new_element <- "added"
+my_list
+
+# Remove element
+my_list$new_element <- NULL
+my_list
+
+# Combine lists
+list1 <- list(a = 1, b = 2)
+list2 <- list(c = 3, d = 4)
+c(list1, list2)
+
+# Length
+length(my_list)
+
+# Names
+names(my_list)
+```
+
+## Nested Lists
+
+```{r}
+# Lists within lists
+nested <- list(
+  level1 = list(
+    level2a = c(1, 2, 3),
+    level2b = list(
+      level3 = "deep"
+    )
+  )
+)
+
+# Access nested elements
+nested[[1]][[1]]
+nested[[1]][[2]][[1]]
+nested$level1$level2b$level3
+```
+
+# 5. Data Frames
+
+Data frames are the most common data structure for statistical analysis. They are like matrices but can hold different types in each column.
+
+## Creating Data Frames
+
+```{r}
+# From vectors
+df <- data.frame(
+  id = 1:5,
+  name = c("Alice", "Bob", "Charlie", "David", "Eve"),
+  age = c(25, 30, 35, 28, 32),
+  score = c(85.5, 92.0, 78.5, 88.0, 95.5),
+  passed = c(TRUE, TRUE, TRUE, TRUE, TRUE)
+)
+df
+
+# From matrix
+mat <- matrix(1:12, nrow = 4)
+df_from_mat <- as.data.frame(mat)
+df_from_mat
+
+# From list
+list_data <- list(
+  x = 1:3,
+  y = c("a", "b", "c")
+)
+df_from_list <- as.data.frame(list_data)
+df_from_list
+```
+
+## Data Frame Properties
+
+```{r}
+# Dimensions
+dim(df)
+nrow(df)
+ncol(df)
+
+# Structure
+str(df)
+
+# Summary
+summary(df)
+
+# Names
+names(df)
+colnames(df)
+rownames(df)
+
+# First and last rows
+head(df)
+tail(df)
+head(df, 3)
+```
+
+## Data Frame Indexing
+
+```{r}
+# By position
+df[1, 2]  # Row 1, column 2
+df[1, ]   # Row 1, all columns
+df[, 2]   # All rows, column 2
+
+# By name
+df$name
+df[, "name"]
+df["name"]
+
+# Multiple columns
+df[, c("name", "age")]
+df[c("name", "age")]
+
+# Logical indexing
+df[df$age > 30, ]
+df[df$score > 85 & df$age < 35, ]
+
+# Subset function
+subset(df, age > 30)
+subset(df, age > 30, select = c(name, score))
+```
+
+## Modifying Data Frames
+
+```{r}
+# Add column
+df$grade <- ifelse(df$score >= 90, "A",
+            ifelse(df$score >= 80, "B", "C"))
+df
+
+# Add row
+new_row <- data.frame(id = 6, name = "Frank", age = 27,
+                      score = 82, passed = TRUE, grade = "B")
+df <- rbind(df, new_row)
+df
+
+# Remove column
+df$grade <- NULL
+df
+
+# Rename columns
+names(df)[names(df) == "score"] <- "test_score"
+df
+
+# Reorder columns
+df <- df[, c("id", "name", "age", "test_score", "passed")]
+df
+```
+
+## Data Frame Operations
+
+```{r}
+# Sort by column
+df[order(df$age), ]
+df[order(-df$test_score), ]  # Descending
+
+# Unique values
+unique(df$age)
+
+# Count occurrences
+table(df$age)
+
+# Aggregate
+aggregate(test_score ~ age, data = df, FUN = mean)
+```
+
+# 6. Factors
+
+Factors are used for categorical data.
+
+## Creating Factors
+
+```{r}
+# From character vector
+blood_type <- c("A", "B", "O", "AB", "A", "O", "B", "A")
+blood_factor <- factor(blood_type)
+blood_factor
+
+# Check class
+class(blood_factor)
+is.factor(blood_factor)
+
+# View levels
+levels(blood_factor)
+
+# View underlying integer codes
+as.numeric(blood_factor)
+```
+
+## Ordered Factors
+
+```{r}
+# For ordinal data
+grade <- c("Good", "Excellent", "Poor", "Good", "Poor", "Excellent")
+grade_factor <- factor(grade,
+                       levels = c("Poor", "Good", "Excellent"),
+                       ordered = TRUE)
+grade_factor
+
+# Comparison works with ordered factors
+grade_factor[1] > grade_factor[3]
+```
+
+## Factor Operations
+
+```{r}
+# Change levels
+blood_factor <- factor(blood_type)
+levels(blood_factor) <- c("Type_A", "Type_AB", "Type_B", "Type_O")
+blood_factor
+
+# Add levels
+blood_factor <- factor(blood_type, levels = c("A", "B", "AB", "O", "AB-"))
+blood_factor
+
+# Drop unused levels
+blood_factor <- droplevels(blood_factor)
+levels(blood_factor)
+
+# Combine factors
+f1 <- factor(c("a", "b", "c"))
+f2 <- factor(c("d", "e", "f"))
+factor(c(as.character(f1), as.character(f2)))
+
+# Count factor levels
+table(blood_factor)
+```
+
+## Converting Between Types
+
+```{r}
+# Factor to character
+as.character(blood_factor)
+
+# Factor to numeric (be careful!)
+f <- factor(c("1", "2", "3"))
+as.numeric(f)  # Returns internal codes (not what you want)
+as.numeric(as.character(f))  # Correct way
+
+# Character to factor
+chars <- c("low", "medium", "high")
+factor(chars, levels = c("low", "medium", "high"))
+```
+
+# 7. Tibbles (Modern Data Frames)
+
+Tibbles are a modern reimagining of data frames from the tidyverse.
+
+```{r}
+library(tibble)
+
+# Create tibble
+tbl <- tibble(
+  x = 1:5,
+  y = x^2,
+  z = letters[1:5]
+)
+tbl
+
+# From data frame
+as_tibble(df)
+
+# Differences from data.frame:
+# 1. Better printing (shows only first 10 rows)
+# 2. Never converts strings to factors
+# 3. Never changes column names
+# 4. Never creates row names
+# 5. Stricter subsetting (always returns tibble)
+```
+
+# 8. Special Values
+
+## NA (Not Available)
+
+```{r}
+# NA represents missing values
+x <- c(1, 2, NA, 4, 5)
+x
+
+# Check for NA
+is.na(x)
+
+# Operations with NA
+mean(x)  # Returns NA
+mean(x, na.rm = TRUE)  # Remove NA
+
+# Count NAs
+sum(is.na(x))
+
+# Remove NAs
+na.omit(x)
+x[!is.na(x)]
+```
+
+## NULL
+
+```{r}
+# NULL represents absence of a value
+x <- NULL
+x
+
+# Check for NULL
+is.null(x)
+
+# Length of NULL is 0
+length(x)
+
+# NULL in lists
+my_list <- list(a = 1, b = NULL, c = 3)
+my_list
+length(my_list)  # Still counts NULL element
+```
+
+## NaN (Not a Number)
+
+```{r}
+# NaN from undefined mathematical operations
+0/0
+Inf - Inf
+
+# Check for NaN
+is.nan(0/0)
+
+# NaN is also NA
+is.na(NaN)
+```
+
+## Inf (Infinity)
+
+```{r}
+# Infinity
+1/0
+-1/0
+
+# Check for infinity
+is.infinite(1/0)
+is.finite(1/0)
+```
+
+# 9. Type Checking Summary
+
+```{r}
+# Create example objects
+vec <- c(1, 2, 3)
+mat <- matrix(1:6, nrow = 2)
+arr <- array(1:8, dim = c(2, 2, 2))
+lst <- list(a = 1, b = 2)
+df <- data.frame(x = 1:3, y = 4:6)
+fct <- factor(c("a", "b", "c"))
+
+# Type checking functions
+is.vector(vec)
+is.matrix(mat)
+is.array(arr)
+is.list(lst)
+is.data.frame(df)
+is.factor(fct)
+
+# Note: matrices and arrays are also vectors
+is.vector(mat)  # FALSE (has dim attribute)
+is.array(mat)   # TRUE (matrix is 2D array)
+```
+
+# 10. Conversion Between Structures
+
+```{r}
+# Vector to matrix
+v <- 1:6
+matrix(v, nrow = 2)
+
+# Matrix to data frame
+m <- matrix(1:6, nrow = 2)
+as.data.frame(m)
+
+# List to data frame (equal length components)
+l <- list(x = 1:3, y = 4:6)
+as.data.frame(l)
+
+# Data frame to matrix (numeric only)
+df_num <- data.frame(a = 1:3, b = 4:6)
+as.matrix(df_num)
+
+# Data frame to list
+as.list(df_num)
+
+# Vector to list
+as.list(1:3)
+```
+
+# Summary
+
+This document covered all major R data structures:
+
+- **Vectors**: Atomic (numeric, integer, character, logical) - 1D homogeneous
+- **Matrices**: 2D homogeneous numeric arrays
+- **Arrays**: nD homogeneous structures
+- **Lists**: Heterogeneous collections
+- **Data Frames**: Tabular data with mixed types
+- **Factors**: Categorical data
+- **Tibbles**: Modern data frames
+- **Special Values**: NA, NULL, NaN, Inf
+
+**Key Takeaways**:
+- Choose the right structure for your data
+- Understand indexing for each type
+- Be aware of type coercion
+- Use factors for categorical data
+- Prefer tibbles for modern R workflows
+
+**Next Steps**: Proceed to Data Import/Export to learn how to read and write different file formats.
+
+# References
+
+- [R for Data Science - Data Structures](https://r4ds.had.co.nz/)
+- [Advanced R - Data Structures](https://adv-r.hadley.nz/vectors-chap.html)
+- [R Documentation](https://www.rdocumentation.org/)

@@ -1,0 +1,1166 @@
+---
+title: "Complete Bioinformatics Pipelines"
+author: "End-to-End Workflows for NGS Data Analysis"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# Introduction
+
+This document provides complete, production-ready bioinformatics pipelines:
+
+1. **Bulk RNA-seq**: FASTQ → Counts → Differential Expression → Visualization
+2. **Single-Cell RNA-seq**: 10X data → QC → Clustering → Marker genes
+3. **ChIP-seq**: Alignment → Peak calling → Annotation → Visualization
+4. **Variant Calling**: VCF processing → Annotation → Filtering
+5. **Microbiome Analysis**: 16S/Shotgun → Diversity → Differential abundance
+
+---
+
+# Part 1: Bulk RNA-seq Pipeline
+
+## 1.1 Overview
+
+**Goal**: Identify differentially expressed genes between conditions
+
+**Steps**:
+1. Quality control (FASTQ)
+2. Alignment (STAR/HISAT2)
+3. Quantification (featureCounts/RSEM)
+4. Quality assessment
+5. Differential expression (DESeq2)
+6. Functional enrichment
+7. Visualization
+
+```{r}
+library(DESeq2)
+library(tximport)
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(EnhancedVolcano)
+library(pheatmap)
+library(ggplot2)
+library(dplyr)
+library(ComplexHeatmap)
+```
+
+## 1.2 Read Quantification
+
+```{r}
+# Option 1: Import Salmon/Kallisto quantification
+# List sample files
+samples <- data.frame(
+  sample_id = paste0("Sample_", 1:6),
+  condition = rep(c("Control", "Treatment"), each = 3),
+  files = paste0("quant/", paste0("Sample_", 1:6), "/quant.sf")
+)
+
+# Load transcript-to-gene mapping
+tx2gene <- read.csv("annotation/tx2gene.csv")
+
+# Import with tximport
+txi <- tximport(
+  files = samples$files,
+  type = "salmon",
+  tx2gene = tx2gene,
+  ignoreTxVersion = TRUE
+)
+
+# Option 2: Import featureCounts output
+counts <- read.table("counts/featureCounts.txt",
+                     header = TRUE,
+                     row.names = 1,
+                     skip = 1)
+
+# Remove annotation columns, keep only counts
+counts <- counts[, 6:ncol(counts)]
+colnames(counts) <- samples$sample_id
+```
+
+## 1.3 Create DESeq2 Object
+
+```{r}
+# Sample metadata
+coldata <- data.frame(
+  row.names = samples$sample_id,
+  condition = factor(samples$condition, levels = c("Control", "Treatment")),
+  batch = factor(rep(1:2, 3))  # If batch effects present
+)
+
+# Create DESeq2 object from tximport
+dds <- DESeqDataSetFromTximport(
+  txi,
+  colData = coldata,
+  design = ~ condition
+)
+
+# Or from count matrix
+dds <- DESeqDataSetFromMatrix(
+  countData = counts,
+  colData = coldata,
+  design = ~ condition
+)
+
+# Pre-filtering: remove low count genes
+keep <- rowSums(counts(dds)) >= 10
+dds <- dds[keep, ]
+
+# View
+dds
+```
+
+## 1.4 Quality Control
+
+```{r}
+# Variance stabilizing transformation
+vsd <- vst(dds, blind = FALSE)
+
+# PCA plot
+pcaData <- plotPCA(vsd, intgroup = "condition", returnData = TRUE)
+percentVar <- round(100 * attr(pcaData, "percentVar"))
+
+ggplot(pcaData, aes(x = PC1, y = PC2, color = condition)) +
+  geom_point(size = 4, alpha = 0.8) +
+  geom_text(aes(label = name), hjust = 0, nudge_x = 1) +
+  xlab(paste0("PC1: ", percentVar[1], "% variance")) +
+  ylab(paste0("PC2: ", percentVar[2], "% variance")) +
+  theme_minimal() +
+  ggtitle("PCA - RNA-seq Samples")
+
+# Sample distances heatmap
+sampleDists <- dist(t(assay(vsd)))
+sampleDistMatrix <- as.matrix(sampleDists)
+
+pheatmap(sampleDistMatrix,
+         clustering_distance_rows = sampleDists,
+         clustering_distance_cols = sampleDists,
+         main = "Sample-to-Sample Distances")
+
+# Count distribution
+library(reshape2)
+count_melt <- melt(log10(counts(dds) + 1))
+colnames(count_melt) <- c("Gene", "Sample", "Count")
+
+ggplot(count_melt, aes(x = Sample, y = Count, fill = Sample)) +
+  geom_boxplot() +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  ggtitle("Distribution of Log10 Counts")
+```
+
+## 1.5 Differential Expression Analysis
+
+```{r}
+# Run DESeq2
+dds <- DESeq(dds)
+
+# Get results
+res <- results(dds, contrast = c("condition", "Treatment", "Control"))
+
+# Add gene symbols
+res$symbol <- mapIds(org.Hs.eg.db,
+                     keys = rownames(res),
+                     column = "SYMBOL",
+                     keytype = "ENSEMBL",
+                     multiVals = "first")
+
+# Summary
+summary(res)
+
+# Number of significant genes
+sum(res$padj < 0.05, na.rm = TRUE)
+sum(res$padj < 0.05 & abs(res$log2FoldChange) > 1, na.rm = TRUE)
+
+# Order by adjusted p-value
+res_ordered <- res[order(res$padj), ]
+
+# Top 10 upregulated genes
+head(res_ordered[res_ordered$log2FoldChange > 0, ], 10)
+
+# Top 10 downregulated genes
+head(res_ordered[res_ordered$log2FoldChange < 0, ], 10)
+
+# Export results
+write.csv(as.data.frame(res_ordered),
+          file = "results/DESeq2_results.csv")
+
+# MA plot
+plotMA(res, ylim = c(-5, 5))
+
+# Dispersion plot
+plotDispEsts(dds)
+```
+
+## 1.6 Visualization
+
+### Volcano Plot
+
+```{r}
+library(EnhancedVolcano)
+
+EnhancedVolcano(res,
+                lab = res$symbol,
+                x = 'log2FoldChange',
+                y = 'padj',
+                title = 'Treatment vs Control',
+                pCutoff = 0.05,
+                FCcutoff = 1,
+                pointSize = 3.0,
+                labSize = 4.0,
+                colAlpha = 0.5,
+                legendPosition = 'right',
+                legendLabSize = 12,
+                legendIconSize = 4.0)
+```
+
+### Heatmap of Top Genes
+
+```{r}
+# Select top 50 significant genes
+top_genes <- head(order(res$padj), 50)
+
+# Get normalized counts
+mat <- assay(vsd)[top_genes, ]
+mat <- t(scale(t(mat)))  # Z-score normalization
+
+# Annotation
+annotation_col <- data.frame(
+  Condition = coldata$condition,
+  row.names = rownames(coldata)
+)
+
+# Plot with pheatmap
+pheatmap(mat,
+         annotation_col = annotation_col,
+         cluster_rows = TRUE,
+         cluster_cols = TRUE,
+         show_rownames = TRUE,
+         show_colnames = TRUE,
+         fontsize_row = 8,
+         main = "Top 50 Differentially Expressed Genes")
+
+# Advanced heatmap with ComplexHeatmap
+library(ComplexHeatmap)
+library(circlize)
+
+col_fun <- colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+ha <- HeatmapAnnotation(
+  Condition = coldata$condition,
+  col = list(Condition = c("Control" = "lightblue", "Treatment" = "pink"))
+)
+
+Heatmap(mat,
+        name = "Z-score",
+        col = col_fun,
+        top_annotation = ha,
+        show_row_names = TRUE,
+        show_column_names = TRUE,
+        row_names_gp = gpar(fontsize = 8),
+        column_title = "Top 50 DE Genes")
+```
+
+### Individual Gene Plots
+
+```{r}
+# Plot counts for specific gene
+plotCounts(dds, gene = "ENSG00000139618", intgroup = "condition")
+
+# Enhanced version
+d <- plotCounts(dds, gene = "ENSG00000139618",
+                intgroup = "condition", returnData = TRUE)
+
+ggplot(d, aes(x = condition, y = count, color = condition)) +
+  geom_point(position = position_jitter(w = 0.1, h = 0), size = 3) +
+  geom_boxplot(alpha = 0.3, outlier.shape = NA) +
+  scale_y_log10() +
+  theme_minimal() +
+  ggtitle("BRCA2 Expression")
+```
+
+## 1.7 Functional Enrichment Analysis
+
+```{r}
+library(clusterProfiler)
+
+# Get significant genes
+sig_genes <- res[res$padj < 0.05 & !is.na(res$padj), ]
+sig_genes <- sig_genes[order(sig_genes$log2FoldChange, decreasing = TRUE), ]
+
+# Upregulated genes
+up_genes <- rownames(sig_genes[sig_genes$log2FoldChange > 1, ])
+
+# Downregulated genes
+down_genes <- rownames(sig_genes[sig_genes$log2FoldChange < -1, ])
+
+# GO enrichment - Biological Process
+ego_up <- enrichGO(gene = up_genes,
+                   OrgDb = org.Hs.eg.db,
+                   keyType = "ENSEMBL",
+                   ont = "BP",
+                   pAdjustMethod = "BH",
+                   pvalueCutoff = 0.05,
+                   qvalueCutoff = 0.05)
+
+# Visualize
+dotplot(ego_up, showCategory = 20)
+barplot(ego_up, showCategory = 20)
+
+# KEGG pathway enrichment
+# Convert to Entrez IDs
+entrez_up <- mapIds(org.Hs.eg.db,
+                    keys = up_genes,
+                    column = "ENTREZID",
+                    keytype = "ENSEMBL",
+                    multiVals = "first")
+entrez_up <- na.omit(entrez_up)
+
+kegg_up <- enrichKEGG(gene = entrez_up,
+                      organism = "hsa",
+                      pvalueCutoff = 0.05)
+
+dotplot(kegg_up, showCategory = 15)
+
+# GSEA (Gene Set Enrichment Analysis)
+# Create ranked gene list
+gene_list <- res$log2FoldChange
+names(gene_list) <- rownames(res)
+gene_list <- na.omit(gene_list)
+gene_list <- sort(gene_list, decreasing = TRUE)
+
+# Convert to Entrez IDs
+gene_list_entrez <- mapIds(org.Hs.eg.db,
+                           keys = names(gene_list),
+                           column = "ENTREZID",
+                           keytype = "ENSEMBL",
+                           multiVals = "first")
+
+gene_list_entrez <- gene_list[!is.na(gene_list_entrez)]
+names(gene_list_entrez) <- gene_list_entrez[!is.na(gene_list_entrez)]
+
+# Run GSEA
+gsea_result <- gseKEGG(geneList = gene_list_entrez,
+                       organism = "hsa",
+                       pvalueCutoff = 0.05)
+
+# Visualize enrichment
+gseaplot2(gsea_result, geneSetID = 1:3, pvalue_table = TRUE)
+
+# Enrichment map
+emapplot(ego_up, showCategory = 30)
+```
+
+## 1.8 Complete Analysis Report
+
+```{r}
+# Generate comprehensive report
+generate_rnaseq_report <- function(dds, res, output_dir = "results") {
+  dir.create(output_dir, showWarnings = FALSE)
+
+  # 1. Sample information
+  write.csv(colData(dds), file.path(output_dir, "sample_info.csv"))
+
+  # 2. All results
+  write.csv(as.data.frame(res), file.path(output_dir, "all_genes.csv"))
+
+  # 3. Significant genes
+  sig <- res[res$padj < 0.05 & !is.na(res$padj), ]
+  write.csv(as.data.frame(sig), file.path(output_dir, "significant_genes.csv"))
+
+  # 4. Normalized counts
+  norm_counts <- counts(dds, normalized = TRUE)
+  write.csv(norm_counts, file.path(output_dir, "normalized_counts.csv"))
+
+  # 5. Top 100 genes
+  top100 <- head(order(res$padj), 100)
+  write.csv(norm_counts[top100, ], file.path(output_dir, "top100_genes_counts.csv"))
+
+  # 6. Summary statistics
+  summary_stats <- data.frame(
+    Total_genes = nrow(res),
+    Genes_tested = sum(!is.na(res$padj)),
+    Significant_padj05 = sum(res$padj < 0.05, na.rm = TRUE),
+    Significant_padj01 = sum(res$padj < 0.01, na.rm = TRUE),
+    Upregulated_log2FC1 = sum(res$padj < 0.05 & res$log2FoldChange > 1, na.rm = TRUE),
+    Downregulated_log2FC1 = sum(res$padj < 0.05 & res$log2FoldChange < -1, na.rm = TRUE)
+  )
+  write.csv(summary_stats, file.path(output_dir, "summary_statistics.csv"))
+
+  message("Report generated in: ", output_dir)
+}
+
+generate_rnaseq_report(dds, res)
+```
+
+---
+
+# Part 2: Single-Cell RNA-seq Pipeline
+
+## 2.1 Overview
+
+**Goal**: Identify cell types and differentially expressed genes
+
+**Pipeline**: 10X data → QC → Normalization → Clustering → Annotation
+
+```{r}
+library(Seurat)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(SingleR)
+library(celldex)
+```
+
+## 2.2 Load and Create Seurat Object
+
+```{r}
+# Load 10X Genomics data
+data_dir <- "filtered_gene_bc_matrices/hg38/"
+data <- Read10X(data.dir = data_dir)
+
+# Create Seurat object
+seurat_obj <- CreateSeuratObject(
+  counts = data,
+  project = "scRNAseq",
+  min.cells = 3,      # Include genes detected in ≥3 cells
+  min.features = 200  # Include cells with ≥200 genes
+)
+
+# Add metadata (if available)
+metadata <- read.csv("metadata.csv", row.names = 1)
+seurat_obj <- AddMetaData(seurat_obj, metadata)
+```
+
+## 2.3 Quality Control
+
+```{r}
+# Calculate mitochondrial percentage
+seurat_obj[["percent.mt"]] <- PercentageFeatureSet(seurat_obj, pattern = "^MT-")
+
+# Calculate ribosomal percentage
+seurat_obj[["percent.ribo"]] <- PercentageFeatureSet(seurat_obj, pattern = "^RP[SL]")
+
+# Visualize QC metrics
+VlnPlot(seurat_obj,
+        features = c("nFeature_RNA", "nCount_RNA", "percent.mt"),
+        ncol = 3,
+        pt.size = 0.1)
+
+# Feature scatter plots
+plot1 <- FeatureScatter(seurat_obj, feature1 = "nCount_RNA", feature2 = "percent.mt")
+plot2 <- FeatureScatter(seurat_obj, feature1 = "nCount_RNA", feature2 = "nFeature_RNA")
+plot1 + plot2
+
+# Filter cells
+seurat_obj <- subset(seurat_obj,
+                     subset = nFeature_RNA > 200 &
+                             nFeature_RNA < 6000 &
+                             percent.mt < 15)
+
+# Before and after filtering
+cat("Cells before filtering:", ncol(data), "\n")
+cat("Cells after filtering:", ncol(seurat_obj), "\n")
+```
+
+## 2.4 Normalization and Feature Selection
+
+```{r}
+# Normalize data
+seurat_obj <- NormalizeData(seurat_obj,
+                            normalization.method = "LogNormalize",
+                            scale.factor = 10000)
+
+# Find variable features
+seurat_obj <- FindVariableFeatures(seurat_obj,
+                                   selection.method = "vst",
+                                   nfeatures = 2000)
+
+# Identify top 10 most variable genes
+top10 <- head(VariableFeatures(seurat_obj), 10)
+
+# Plot variable features
+plot1 <- VariableFeaturePlot(seurat_obj)
+plot2 <- LabelPoints(plot = plot1, points = top10, repel = TRUE)
+plot1 + plot2
+```
+
+## 2.5 Scaling and PCA
+
+```{r}
+# Scale data
+all.genes <- rownames(seurat_obj)
+seurat_obj <- ScaleData(seurat_obj, features = all.genes)
+
+# Or regress out unwanted sources of variation
+seurat_obj <- ScaleData(seurat_obj,
+                        vars.to.regress = c("percent.mt", "nCount_RNA"))
+
+# Run PCA
+seurat_obj <- RunPCA(seurat_obj,
+                     features = VariableFeatures(object = seurat_obj))
+
+# Visualize PCA results
+print(seurat_obj[["pca"]], dims = 1:5, nfeatures = 5)
+
+VizDimLoadings(seurat_obj, dims = 1:2, reduction = "pca")
+
+DimPlot(seurat_obj, reduction = "pca")
+
+DimHeatmap(seurat_obj, dims = 1:15, cells = 500, balanced = TRUE)
+
+# Elbow plot to determine dimensionality
+ElbowPlot(seurat_obj, ndims = 50)
+```
+
+## 2.6 Clustering
+
+```{r}
+# Cluster cells
+seurat_obj <- FindNeighbors(seurat_obj, dims = 1:30)
+seurat_obj <- FindClusters(seurat_obj, resolution = 0.5)
+
+# Try multiple resolutions
+seurat_obj <- FindClusters(seurat_obj, resolution = c(0.1, 0.3, 0.5, 0.8, 1.0))
+
+# Visualize clusters at different resolutions
+library(clustree)
+clustree(seurat_obj, prefix = "RNA_snn_res.")
+```
+
+## 2.7 Dimensionality Reduction
+
+```{r}
+# Run UMAP
+seurat_obj <- RunUMAP(seurat_obj, dims = 1:30)
+
+# Visualize
+DimPlot(seurat_obj, reduction = "umap", label = TRUE, pt.size = 0.5)
+
+# Run t-SNE (alternative)
+seurat_obj <- RunTSNE(seurat_obj, dims = 1:30)
+DimPlot(seurat_obj, reduction = "tsne", label = TRUE, pt.size = 0.5)
+
+# Color by QC metrics
+FeaturePlot(seurat_obj, features = c("nCount_RNA", "nFeature_RNA", "percent.mt"))
+
+# Split by condition (if applicable)
+DimPlot(seurat_obj, reduction = "umap", split.by = "condition")
+```
+
+## 2.8 Find Marker Genes
+
+```{r}
+# Find markers for all clusters
+all_markers <- FindAllMarkers(seurat_obj,
+                              only.pos = TRUE,
+                              min.pct = 0.25,
+                              logfc.threshold = 0.25)
+
+# Top markers per cluster
+top_markers <- all_markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 10, order_by = avg_log2FC)
+
+write.csv(all_markers, "results/cluster_markers.csv")
+write.csv(top_markers, "results/top_cluster_markers.csv")
+
+# Visualize top markers
+top5 <- all_markers %>%
+  group_by(cluster) %>%
+  slice_max(n = 5, order_by = avg_log2FC)
+
+DoHeatmap(seurat_obj, features = top5$gene) + NoLegend()
+
+# Violin plots for specific markers
+VlnPlot(seurat_obj, features = c("CD3D", "CD8A", "CD4"))
+
+# Feature plots
+FeaturePlot(seurat_obj, features = c("CD3D", "CD8A", "CD4", "CD14"))
+
+# Dot plot
+DotPlot(seurat_obj, features = unique(top5$gene)) +
+  RotatedAxis()
+```
+
+## 2.9 Cell Type Annotation
+
+```{r}
+# Manual annotation based on marker genes
+cluster_names <- c(
+  "0" = "CD4 T cells",
+  "1" = "CD8 T cells",
+  "2" = "B cells",
+  "3" = "Monocytes",
+  "4" = "NK cells",
+  "5" = "Dendritic cells"
+)
+
+seurat_obj <- RenameIdents(seurat_obj, cluster_names)
+seurat_obj$cell_type <- Idents(seurat_obj)
+
+DimPlot(seurat_obj, reduction = "umap", label = TRUE, pt.size = 0.5) +
+  ggtitle("Cell Type Annotation")
+
+# Automatic annotation with SingleR
+library(SingleR)
+library(celldex)
+
+# Get reference dataset
+ref <- celldex::HumanPrimaryCellAtlasData()
+
+# Convert Seurat to SingleCellExperiment
+sce <- as.SingleCellExperiment(seurat_obj)
+
+# Predict cell types
+predictions <- SingleR(test = sce,
+                       ref = ref,
+                       labels = ref$label.main)
+
+# Add to Seurat object
+seurat_obj$singler_labels <- predictions$labels
+
+# Visualize
+DimPlot(seurat_obj, reduction = "umap", group.by = "singler_labels", label = TRUE)
+```
+
+## 2.10 Differential Expression Between Conditions
+
+```{r}
+# Compare cell types between conditions
+Idents(seurat_obj) <- "cell_type"
+
+# Find DEGs between conditions for specific cell type
+cd4_cells <- subset(seurat_obj, idents = "CD4 T cells")
+
+Idents(cd4_cells) <- "condition"
+de_genes <- FindMarkers(cd4_cells,
+                        ident.1 = "Treatment",
+                        ident.2 = "Control",
+                        min.pct = 0.25)
+
+# Volcano plot
+library(EnhancedVolcano)
+EnhancedVolcano(de_genes,
+                lab = rownames(de_genes),
+                x = 'avg_log2FC',
+                y = 'p_val_adj',
+                title = 'CD4 T cells: Treatment vs Control')
+```
+
+## 2.11 Trajectory Analysis (Pseudotime)
+
+```{r}
+library(monocle3)
+
+# Convert Seurat to cell_data_set
+cds <- as.cell_data_set(seurat_obj)
+
+# Preprocess
+cds <- preprocess_cds(cds, num_dim = 30)
+
+# Dimensionality reduction
+cds <- reduce_dimension(cds)
+
+# Cluster cells
+cds <- cluster_cells(cds)
+
+# Learn trajectory
+cds <- learn_graph(cds)
+
+# Order cells in pseudotime
+cds <- order_cells(cds)
+
+# Plot trajectory
+plot_cells(cds,
+           color_cells_by = "pseudotime",
+           label_cell_groups = FALSE,
+           label_leaves = FALSE,
+           label_branch_points = FALSE)
+
+# Plot by cell type
+plot_cells(cds,
+           color_cells_by = "cell_type",
+           label_cell_groups = TRUE)
+```
+
+---
+
+# Part 3: ChIP-seq Pipeline
+
+## 3.1 Overview
+
+**Goal**: Identify protein-DNA binding sites
+
+**Pipeline**: BAM files → Peak calling → Annotation → Visualization
+
+```{r}
+library(ChIPseeker)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+library(org.Hs.eg.db)
+library(clusterProfiler)
+library(GenomicRanges)
+library(rtracklayer)
+library(DiffBind)
+```
+
+## 3.2 Peak Calling (Usually done outside R)
+
+```bash
+# Using MACS2 (in bash/shell)
+macs2 callpeak \
+  -t treatment.bam \
+  -c control.bam \
+  -f BAM \
+  -g hs \
+  -n sample_name \
+  --outdir peaks/ \
+  -q 0.05
+
+# Or MACS3 for ChIP-seq
+macs3 callpeak \
+  -t treatment.bam \
+  -c control.bam \
+  -f BAMPE \
+  -g hs \
+  -n sample_name \
+  --outdir peaks/
+```
+
+## 3.3 Load and Process Peaks
+
+```{r}
+# Read peak files
+peaks <- import.bed("peaks/sample_peaks.narrowPeak")
+
+# Or read multiple samples
+peak_files <- list.files("peaks/", pattern = "*.narrowPeak", full.names = TRUE)
+peak_list <- lapply(peak_files, import.bed)
+names(peak_list) <- gsub("_peaks.narrowPeak", "", basename(peak_files))
+
+# Combine all peaks
+all_peaks <- reduce(do.call(c, peak_list))
+
+# Summary statistics
+summary(width(peaks))
+table(seqnames(peaks))
+
+# Filter peaks by score
+peaks_filtered <- peaks[peaks$score > 50]
+```
+
+## 3.4 Peak Annotation
+
+```{r}
+library(ChIPseeker)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+
+# Annotate peaks
+peakAnno <- annotatePeak(peaks,
+                        tssRegion = c(-3000, 3000),
+                        TxDb = txdb,
+                        annoDb = "org.Hs.eg.db")
+
+# View annotation
+peakAnno
+
+# Convert to data frame
+peak_df <- as.data.frame(peakAnno)
+write.csv(peak_df, "results/annotated_peaks.csv")
+
+# Visualization
+# Distribution of peaks relative to TSS
+plotAnnoBar(peakAnno)
+plotDistToTSS(peakAnno,
+             title = "Distribution of ChIP peaks relative to TSS")
+
+# Pie chart
+plotAnnoPie(peakAnno)
+
+# Genomic annotation
+plotAnnoPie(peakAnno)
+
+# Upset plot
+upsetplot(peakAnno, vennpie = TRUE)
+
+# Heatmap of ChIP peaks binding to TSS regions
+tagMatrix <- getTagMatrix(peaks, windows = promoter)
+tagHeatmap(tagMatrix, xlim = c(-3000, 3000))
+
+# Average profile
+plotAvgProf(tagMatrix, xlim = c(-3000, 3000),
+            xlab = "Genomic Region (5'->3')",
+            ylab = "Read Count Frequency")
+```
+
+## 3.5 Functional Enrichment
+
+```{r}
+# Get genes associated with peaks
+genes <- peak_df$geneId
+
+# GO enrichment
+ego <- enrichGO(gene = genes,
+                OrgDb = org.Hs.eg.db,
+                keyType = "ENTREZID",
+                ont = "BP",
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.05)
+
+dotplot(ego, showCategory = 20)
+barplot(ego, showCategory = 20)
+
+# KEGG pathway
+keg <- enrichKEGG(gene = genes,
+                  organism = "hsa",
+                  pvalueCutoff = 0.05)
+
+dotplot(keg, showCategory = 15)
+
+# Disease association
+edo <- enrichDO(gene = genes,
+                ont = "DO",
+                pvalueCutoff = 0.05,
+                readable = TRUE)
+```
+
+## 3.6 Differential Binding Analysis
+
+```{r}
+library(DiffBind)
+
+# Create sample sheet
+samples <- data.frame(
+  SampleID = c("Sample1_Ctrl", "Sample2_Ctrl", "Sample3_Treat", "Sample4_Treat"),
+  Condition = c("Control", "Control", "Treatment", "Treatment"),
+  Replicate = c(1, 2, 1, 2),
+  bamReads = c("bam/s1.bam", "bam/s2.bam", "bam/s3.bam", "bam/s4.bam"),
+  Peaks = c("peaks/s1.bed", "peaks/s2.bed", "peaks/s3.bed", "peaks/s4.bed"),
+  PeakCaller = "macs"
+)
+
+# Create DBA object
+dba <- dba(sampleSheet = samples)
+
+# Count reads
+dba <- dba.count(dba)
+
+# Establish contrast
+dba <- dba.contrast(dba, categories = DBA_CONDITION)
+
+# Analyze
+dba <- dba.analyze(dba)
+
+# Get differential binding sites
+db_sites <- dba.report(dba, th = 0.05)
+
+# Export
+write.csv(as.data.frame(db_sites), "results/differential_binding.csv")
+
+# Visualizations
+dba.plotPCA(dba, attributes = DBA_CONDITION)
+dba.plotHeatmap(dba)
+dba.plotMA(dba)
+dba.plotVolcano(dba)
+```
+
+## 3.7 Motif Analysis
+
+```{r}
+library(motifStack)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+# Extract sequences around peak summits
+peak_seqs <- getSeq(BSgenome.Hsapiens.UCSC.hg38, peaks)
+
+# Export for external motif analysis
+writeXStringSet(peak_seqs, "peaks_sequences.fasta")
+
+# Use MEME suite (external) or homer (external) for de novo motif discovery
+```
+
+---
+
+# Part 4: Variant Calling Pipeline
+
+## 4.1 Overview
+
+**Goal**: Identify and annotate genetic variants
+
+```{r}
+library(VariantAnnotation)
+library(GenomicRanges)
+library(BSgenome.Hsapiens.UCSC.hg38)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+```
+
+## 4.2 Read and Filter VCF
+
+```{r}
+# Read VCF file
+vcf <- readVcf("variants.vcf", "hg38")
+
+# Basic information
+vcf
+rowRanges(vcf)
+info(vcf)
+geno(vcf)
+
+# Filter by quality
+vcf_filtered <- vcf[qual(vcf) > 30]
+
+# Filter by depth
+vcf_filtered <- vcf_filtered[info(vcf_filtered)$DP > 10]
+
+# Filter by allele frequency
+vcf_filtered <- vcf_filtered[info(vcf_filtered)$AF > 0.01]
+
+# Export filtered VCF
+writeVcf(vcf_filtered, "variants_filtered.vcf")
+```
+
+## 4.3 Variant Annotation
+
+```{r}
+# Predict coding consequences
+library(VariantAnnotation)
+
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+coding <- predictCoding(vcf, txdb, BSgenome.Hsapiens.UCSC.hg38)
+
+# View consequences
+table(coding$CONSEQUENCE)
+
+# Filter for specific consequences
+nonsyn <- coding[coding$CONSEQUENCE %in% c("nonsynonymous", "frameshift", "nonsense")]
+
+# Add gene information
+library(org.Hs.eg.db)
+gene_symbols <- mapIds(org.Hs.eg.db,
+                       keys = as.character(nonsyn$GENEID),
+                       column = "SYMBOL",
+                       keytype = "ENTREZID")
+nonsyn$SYMBOL <- gene_symbols
+
+# Export
+write.csv(as.data.frame(nonsyn), "results/coding_variants.csv")
+```
+
+## 4.4 Variant Summary and Visualization
+
+```{r}
+# Variant types
+variant_types <- table(info(vcf)$TYPE)
+barplot(variant_types, main = "Variant Types", col = "steelblue")
+
+# Variant quality distribution
+hist(qual(vcf), breaks = 50, main = "Variant Quality Distribution",
+     xlab = "Quality Score", col = "lightblue")
+
+# Depth distribution
+hist(info(vcf)$DP, breaks = 50, main = "Read Depth Distribution",
+     xlab = "Depth", col = "lightgreen")
+
+# Allele frequency
+hist(info(vcf)$AF, breaks = 50, main = "Allele Frequency Distribution",
+     xlab = "Allele Frequency", col = "lightpink")
+
+# Variants per chromosome
+var_per_chr <- table(seqnames(rowRanges(vcf)))
+barplot(var_per_chr, las = 2, main = "Variants per Chromosome")
+
+# Ti/Tv ratio (transitions/transversions)
+# Calculate Ti/Tv ratio for quality check
+```
+
+---
+
+# Part 5: Microbiome Analysis
+
+## 5.1 Overview
+
+**Goal**: Analyze microbial community composition and diversity
+
+```{r}
+library(phyloseq)
+library(vegan)
+library(ggplot2)
+library(dplyr)
+library(microbiome)
+```
+
+## 5.2 Create phyloseq Object
+
+```{r}
+# Load data
+otu_table <- read.csv("otu_table.csv", row.names = 1)
+taxonomy <- read.csv("taxonomy.csv", row.names = 1)
+metadata <- read.csv("metadata.csv", row.names = 1)
+
+# Create phyloseq object
+otu <- otu_table(as.matrix(otu_table), taxa_are_rows = TRUE)
+tax <- tax_table(as.matrix(taxonomy))
+sam <- sample_data(metadata)
+
+physeq <- phyloseq(otu, tax, sam)
+
+# Or load from biom format
+# physeq <- import_biom("table.biom")
+```
+
+## 5.3 Quality Control and Filtering
+
+```{r}
+# Remove low abundance taxa
+physeq_filtered <- filter_taxa(physeq, function(x) sum(x) > 10, TRUE)
+
+# Remove singletons
+physeq_filtered <- filter_taxa(physeq_filtered, function(x) sum(x > 1) > 1, TRUE)
+
+# Filter samples with low read count
+physeq_filtered <- prune_samples(sample_sums(physeq_filtered) > 1000, physeq_filtered)
+
+# Summary
+physeq_filtered
+```
+
+## 5.4 Alpha Diversity
+
+```{r}
+# Calculate alpha diversity
+alpha_div <- estimate_richness(physeq_filtered,
+                               measures = c("Observed", "Shannon", "Simpson"))
+
+# Add metadata
+alpha_div$Group <- sample_data(physeq_filtered)$Group
+
+# Plot
+plot_richness(physeq_filtered,
+              x = "Group",
+              measures = c("Shannon", "Simpson"),
+              color = "Group") +
+  geom_boxplot() +
+  theme_minimal()
+
+# Statistical test
+wilcox.test(Shannon ~ Group, data = alpha_div)
+```
+
+## 5.5 Beta Diversity
+
+```{r}
+# Ordination
+physeq_rel <- transform_sample_counts(physeq_filtered, function(x) x/sum(x))
+
+# PCoA with Bray-Curtis
+ord <- ordinate(physeq_rel, method = "PCoA", distance = "bray")
+
+plot_ordination(physeq_rel, ord, color = "Group") +
+  geom_point(size = 3) +
+  stat_ellipse() +
+  theme_minimal()
+
+# NMDS
+ord_nmds <- ordinate(physeq_rel, method = "NMDS", distance = "bray")
+plot_ordination(physeq_rel, ord_nmds, color = "Group")
+
+# PERMANOVA
+dist_matrix <- distance(physeq_rel, method = "bray")
+metadata <- as(sample_data(physeq_rel), "data.frame")
+adonis2(dist_matrix ~ Group, data = metadata)
+```
+
+## 5.6 Taxonomic Composition
+
+```{r}
+# Bar plot
+plot_bar(physeq_filtered, fill = "Phylum") +
+  facet_wrap(~Group, scales = "free_x")
+
+# Relative abundance at phylum level
+physeq_phylum <- tax_glom(physeq_rel, taxrank = "Phylum")
+
+plot_bar(physeq_phylum, fill = "Phylum") +
+  geom_bar(stat = "identity") +
+  facet_wrap(~Group, scales = "free_x") +
+  theme_minimal()
+
+# Heatmap
+plot_heatmap(physeq_filtered,
+             taxa.label = "Genus",
+             sample.label = "Sample") +
+  facet_grid(~Group, scales = "free")
+```
+
+## 5.7 Differential Abundance
+
+```{r}
+library(DESeq2)
+
+# Convert to DESeq2
+diagdds <- phyloseq_to_deseq2(physeq_filtered, ~ Group)
+
+# Run DESeq2
+diagdds <- DESeq(diagdds, test = "Wald", fitType = "local")
+
+# Results
+res <- results(diagdds, contrast = c("Group", "Treatment", "Control"))
+
+# Order by adjusted p-value
+res <- res[order(res$padj), ]
+
+# Get significant taxa
+sig_taxa <- res[which(res$padj < 0.05), ]
+
+# Add taxonomy
+tax_table <- tax_table(physeq_filtered)[rownames(sig_taxa), ]
+sig_taxa_annotated <- cbind(as(sig_taxa, "data.frame"), as(tax_table, "matrix"))
+
+write.csv(sig_taxa_annotated, "results/differential_abundance.csv")
+```
+
+---
+
+# Summary
+
+This document provided complete, production-ready pipelines for:
+
+1. **Bulk RNA-seq**: From counts to DEGs to enrichment
+2. **Single-cell RNA-seq**: QC, clustering, annotation, trajectory
+3. **ChIP-seq**: Peak calling, annotation, differential binding
+4. **Variant calling**: VCF processing, annotation, filtering
+5. **Microbiome**: Diversity, composition, differential abundance
+
+## Key Tools Covered:
+- DESeq2, tximport, clusterProfiler
+- Seurat, SingleR, monocle3
+- ChIPseeker, DiffBind
+- VariantAnnotation
+- phyloseq, vegan, microbiome
+
+## Best Practices:
+- Always perform QC
+- Use appropriate normalization
+- Multiple testing correction
+- Visualize at every step
+- Document parameters
+- Save intermediate results
+
+# References
+
+- [Bioconductor Workflows](https://bioconductor.org/packages/release/BiocViews.html#___Workflow)
+- [Seurat vignettes](https://satijalab.org/seurat/)
+- [ChIP-seq analysis](https://hbctraining.github.io/Intro-to-ChIPseq/)
+- [RNA-seq workflow](http://bioconductor.org/packages/release/workflows/html/rnaseqGene.html)

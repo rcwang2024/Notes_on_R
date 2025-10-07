@@ -1,0 +1,1184 @@
+---
+title: "Cloud Computing and Big Data in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Introduction to Cloud Computing with R
+
+## Why Cloud Computing?
+
+- **Scalability**: Handle datasets larger than local memory
+- **Compute Power**: Access to high-performance computing resources
+- **Collaboration**: Share data and analysis pipelines
+- **Cost-Effective**: Pay only for resources used
+- **Reproducibility**: Consistent computing environments
+
+## Cloud Platforms
+
+- **AWS (Amazon Web Services)**: EC2, S3, EMR, Redshift
+- **Google Cloud Platform (GCP)**: Compute Engine, Cloud Storage, BigQuery
+- **Microsoft Azure**: Virtual Machines, Blob Storage, HDInsight
+- **Cloud-native solutions**: RStudio Cloud, Posit Connect
+
+# 2. AWS Integration
+
+## AWS SDK for R (paws)
+
+```{r}
+# Install
+install.packages("paws")
+
+library(paws)
+
+# Configure AWS credentials
+# Set up ~/.aws/credentials or use environment variables
+# AWS_ACCESS_KEY_ID
+# AWS_SECRET_ACCESS_KEY
+# AWS_DEFAULT_REGION
+```
+
+## Working with S3
+
+```{r}
+library(paws)
+
+# Initialize S3 client
+s3 <- s3()
+
+# List buckets
+buckets <- s3$list_buckets()
+print(buckets$Buckets)
+
+# Create bucket
+s3$create_bucket(
+  Bucket = "my-r-data-bucket",
+  CreateBucketConfiguration = list(
+    LocationConstraint = "us-west-2"
+  )
+)
+
+# Upload file to S3
+s3$put_object(
+  Bucket = "my-r-data-bucket",
+  Key = "data/my_data.csv",
+  Body = charToRaw(paste(readLines("local_data.csv"), collapse = "\n"))
+)
+
+# Download file from S3
+obj <- s3$get_object(
+  Bucket = "my-r-data-bucket",
+  Key = "data/my_data.csv"
+)
+data <- read.csv(text = rawToChar(obj$Body))
+
+# List objects in bucket
+objects <- s3$list_objects_v2(
+  Bucket = "my-r-data-bucket",
+  Prefix = "data/"
+)
+
+# Delete object
+s3$delete_object(
+  Bucket = "my-r-data-bucket",
+  Key = "data/my_data.csv"
+)
+```
+
+## Alternative: aws.s3 Package
+
+```{r}
+library(aws.s3)
+
+# Set credentials
+Sys.setenv("AWS_ACCESS_KEY_ID" = "your_key",
+           "AWS_SECRET_ACCESS_KEY" = "your_secret",
+           "AWS_DEFAULT_REGION" = "us-east-1")
+
+# Save R object directly to S3
+s3save(mtcars, iris, bucket = "my-bucket", object = "datasets.RData")
+
+# Load R object from S3
+s3load("datasets.RData", bucket = "my-bucket")
+
+# Read CSV from S3
+data <- s3read_using(read.csv, bucket = "my-bucket", object = "data.csv")
+
+# Write CSV to S3
+s3write_using(mtcars, FUN = write.csv, bucket = "my-bucket", object = "mtcars.csv")
+
+# List bucket contents
+bucket_list_df("my-bucket")
+
+# Delete object
+delete_object("data.csv", bucket = "my-bucket")
+```
+
+## AWS EC2 Instances
+
+```{r}
+library(paws)
+
+ec2 <- ec2()
+
+# List instances
+instances <- ec2$describe_instances()
+
+# Start instance
+ec2$start_instances(InstanceIds = list("i-1234567890abcdef0"))
+
+# Stop instance
+ec2$stop_instances(InstanceIds = list("i-1234567890abcdef0"))
+
+# Create instance (basic example)
+ec2$run_instances(
+  ImageId = "ami-0c55b159cbfafe1f0",  # Amazon Linux 2 AMI
+  InstanceType = "t2.micro",
+  MinCount = 1L,
+  MaxCount = 1L,
+  KeyName = "my-key-pair",
+  SecurityGroupIds = list("sg-12345678"),
+  TagSpecifications = list(
+    list(
+      ResourceType = "instance",
+      Tags = list(
+        list(Key = "Name", Value = "R-Analysis-Server")
+      )
+    )
+  )
+)
+```
+
+## AWS Redshift
+
+```{r}
+library(DBI)
+library(RPostgres)
+
+# Connect to Redshift
+con <- dbConnect(
+  RPostgres::Postgres(),
+  host = "my-cluster.redshift.amazonaws.com",
+  port = 5439,
+  dbname = "mydb",
+  user = "username",
+  password = "password"
+)
+
+# Query data
+query <- "
+  SELECT date, region, sales, customers
+  FROM sales_data
+  WHERE date >= '2023-01-01'
+  LIMIT 10000
+"
+
+data <- dbGetQuery(con, query)
+
+# Write data to Redshift
+dbWriteTable(con, "r_processed_data", processed_data,
+             overwrite = TRUE, row.names = FALSE)
+
+# Use dplyr with Redshift
+library(dplyr)
+sales_tbl <- tbl(con, "sales_data")
+
+result <- sales_tbl %>%
+  filter(date >= "2023-01-01") %>%
+  group_by(region) %>%
+  summarise(
+    total_sales = sum(sales, na.rm = TRUE),
+    avg_sales = mean(sales, na.rm = TRUE)
+  ) %>%
+  collect()
+
+dbDisconnect(con)
+```
+
+# 3. Google Cloud Platform
+
+## Google Cloud Storage
+
+```{r}
+library(googleCloudStorageR)
+
+# Authenticate
+gcs_auth("path/to/service-account-key.json")
+
+# Set default bucket
+gcs_global_bucket("my-gcs-bucket")
+
+# List objects
+objects <- gcs_list_objects()
+
+# Upload file
+gcs_upload("local_file.csv", name = "data/remote_file.csv")
+
+# Download file
+gcs_get_object("data/remote_file.csv", saveToDisk = "downloaded_file.csv")
+
+# Save R object directly
+gcs_save(mtcars, iris, file = "datasets.RData")
+
+# Load R object
+gcs_load("datasets.RData")
+
+# Read CSV directly into memory
+data <- gcs_get_object("data.csv") %>%
+  textConnection() %>%
+  read.csv()
+```
+
+## BigQuery
+
+```{r}
+library(bigrquery)
+
+# Set project
+project_id <- "my-project-id"
+billing <- project_id  # Billing project
+
+# Query public dataset
+sql <- "
+  SELECT name, gender, count
+  FROM `bigquery-public-data.usa_names.usa_1910_2013`
+  WHERE state = 'CA' AND year = 2013
+  ORDER BY count DESC
+  LIMIT 10
+"
+
+# Execute query
+result <- bq_project_query(project_id, sql)
+data <- bq_table_download(result)
+
+# Use dplyr with BigQuery
+library(dplyr)
+
+# Connect to dataset
+con <- dbConnect(
+  bigrquery::bigquery(),
+  project = project_id,
+  dataset = "my_dataset",
+  billing = billing
+)
+
+# Query with dplyr
+names_tbl <- tbl(con, "usa_names")
+
+ca_names <- names_tbl %>%
+  filter(state == "CA", year == 2013) %>%
+  arrange(desc(count)) %>%
+  head(10) %>%
+  collect()
+
+# Create table in BigQuery
+bq_table_create(
+  bq_table(project_id, "my_dataset", "new_table"),
+  fields = as_bq_fields(mtcars)
+)
+
+# Upload data
+bq_table_upload(
+  bq_table(project_id, "my_dataset", "new_table"),
+  mtcars
+)
+
+dbDisconnect(con)
+```
+
+## Google Compute Engine
+
+```{r}
+library(googleComputeEngineR)
+
+# Authenticate
+gce_auth("path/to/service-account-key.json")
+
+# Set project and zone
+gce_global_project("my-project-id")
+gce_global_zone("us-central1-a")
+
+# List instances
+instances <- gce_list_instances()
+
+# Create instance with RStudio
+vm <- gce_vm(
+  name = "rstudio-server",
+  predefined_type = "n1-standard-4",
+  template = "rstudio",
+  username = "rstudio",
+  password = "secure_password"
+)
+
+# SSH into instance
+gce_ssh(vm, "whoami")
+
+# Transfer file
+gce_ssh_upload(vm, "local_file.R", "remote_file.R")
+
+# Stop instance
+gce_vm_stop(vm)
+
+# Start instance
+gce_vm_start(vm)
+
+# Delete instance
+gce_vm_delete(vm)
+```
+
+# 4. Apache Spark with sparklyr
+
+## Setup and Connection
+
+```{r}
+# Install
+install.packages("sparklyr")
+library(sparklyr)
+
+# Install Spark locally (for testing)
+spark_install(version = "3.4.0")
+
+# Connect to local Spark
+sc <- spark_connect(master = "local")
+
+# Connect to Spark cluster
+sc <- spark_connect(
+  master = "spark://master-node:7077",
+  spark_home = "/opt/spark",
+  config = list(
+    spark.executor.memory = "4g",
+    spark.executor.cores = 4,
+    spark.dynamicAllocation.enabled = TRUE
+  )
+)
+
+# Connect to Spark on AWS EMR
+sc <- spark_connect(
+  master = "yarn",
+  app_name = "my-analysis",
+  config = spark_config()
+)
+```
+
+## Loading Data
+
+```{r}
+# Copy R data frame to Spark
+mtcars_spark <- copy_to(sc, mtcars, overwrite = TRUE)
+
+# Read from file
+# CSV
+sales_spark <- spark_read_csv(
+  sc,
+  name = "sales",
+  path = "s3://my-bucket/data/sales.csv",
+  header = TRUE,
+  infer_schema = TRUE
+)
+
+# Parquet (recommended for big data)
+sales_spark <- spark_read_parquet(
+  sc,
+  name = "sales",
+  path = "s3://my-bucket/data/sales.parquet"
+)
+
+# JSON
+sales_spark <- spark_read_json(
+  sc,
+  name = "sales",
+  path = "s3://my-bucket/data/sales.json"
+)
+
+# From Hive table
+sales_spark <- spark_read_table(sc, "sales_table")
+
+# Multiple files
+sales_spark <- spark_read_csv(
+  sc,
+  name = "all_sales",
+  path = "s3://my-bucket/data/sales/*.csv"
+)
+```
+
+## Data Manipulation with dplyr
+
+```{r}
+library(dplyr)
+
+# Standard dplyr operations work with Spark
+result <- mtcars_spark %>%
+  filter(mpg > 20) %>%
+  group_by(cyl) %>%
+  summarise(
+    n = n(),
+    avg_mpg = mean(mpg),
+    avg_hp = mean(hp),
+    max_wt = max(wt)
+  ) %>%
+  arrange(desc(avg_mpg))
+
+# Join operations
+customers_spark <- spark_read_csv(sc, "customers", "customers.csv")
+orders_spark <- spark_read_csv(sc, "orders", "orders.csv")
+
+customer_orders <- customers_spark %>%
+  left_join(orders_spark, by = "customer_id") %>%
+  group_by(customer_name) %>%
+  summarise(
+    total_orders = n(),
+    total_amount = sum(order_amount)
+  )
+
+# Window functions
+library(dbplyr)
+
+ranked_sales <- sales_spark %>%
+  group_by(region) %>%
+  mutate(
+    sales_rank = row_number(desc(sales)),
+    cumulative_sales = cumsum(sales),
+    pct_of_total = sales / sum(sales) * 100
+  )
+
+# SQL queries
+library(DBI)
+
+result <- dbGetQuery(sc, "
+  SELECT region,
+         AVG(sales) as avg_sales,
+         COUNT(*) as n_transactions
+  FROM sales
+  WHERE date >= '2023-01-01'
+  GROUP BY region
+  ORDER BY avg_sales DESC
+")
+```
+
+## Machine Learning with Spark
+
+```{r}
+library(sparklyr)
+
+# Prepare data
+iris_spark <- copy_to(sc, iris, overwrite = TRUE)
+
+# Split data
+partitions <- iris_spark %>%
+  sdf_random_split(training = 0.7, testing = 0.3, seed = 123)
+
+train_data <- partitions$training
+test_data <- partitions$testing
+
+# Linear Regression
+lr_model <- train_data %>%
+  ml_linear_regression(Sepal_Length ~ Sepal_Width + Petal_Length + Petal_Width)
+
+# Predictions
+predictions <- ml_predict(lr_model, test_data)
+
+# Model metrics
+ml_regression_evaluator(predictions, label_col = "Sepal_Length")
+
+# Random Forest
+rf_model <- train_data %>%
+  ml_random_forest_classifier(
+    Species ~ Sepal_Length + Sepal_Width + Petal_Length + Petal_Width,
+    num_trees = 100,
+    max_depth = 5
+  )
+
+# Evaluate
+rf_predictions <- ml_predict(rf_model, test_data)
+ml_multiclass_classification_evaluator(rf_predictions)
+
+# Gradient Boosted Trees
+gbt_model <- train_data %>%
+  ml_gbt_classifier(
+    Species ~ .,
+    max_iter = 20,
+    max_depth = 5
+  )
+
+# K-means clustering
+kmeans_model <- iris_spark %>%
+  ml_kmeans(~ Sepal_Length + Sepal_Width + Petal_Length + Petal_Width,
+            k = 3,
+            max_iter = 100)
+
+# Get cluster assignments
+clustered_data <- ml_predict(kmeans_model, iris_spark)
+
+# PCA
+pca_model <- iris_spark %>%
+  ml_pca(~ Sepal_Length + Sepal_Width + Petal_Length + Petal_Width,
+         k = 2)
+
+pca_transformed <- ml_transform(pca_model, iris_spark)
+```
+
+## Feature Engineering
+
+```{r}
+# Create feature transformers pipeline
+pipeline <- ml_pipeline(sc) %>%
+  ft_string_indexer("Species", "species_idx") %>%
+  ft_vector_assembler(
+    c("Sepal_Length", "Sepal_Width", "Petal_Length", "Petal_Width"),
+    "features"
+  ) %>%
+  ft_standard_scaler("features", "scaled_features")
+
+# Fit pipeline
+fitted_pipeline <- ml_fit(pipeline, iris_spark)
+
+# Transform data
+transformed_data <- ml_transform(fitted_pipeline, iris_spark)
+
+# More transformers
+pipeline_advanced <- ml_pipeline(sc) %>%
+  # Bucketize continuous variable
+  ft_bucketizer("Sepal_Length", "sepal_length_bucket",
+                splits = c(-Inf, 5, 6, 7, Inf)) %>%
+  # One-hot encoding
+  ft_one_hot_encoder("species_idx", "species_vec") %>%
+  # Polynomial expansion
+  ft_polynomial_expansion("features", "poly_features", degree = 2) %>%
+  # Normalize
+  ft_normalizer("poly_features", "normalized_features")
+```
+
+## Performance Optimization
+
+```{r}
+# Cache frequently used tables
+cached_data <- sales_spark %>%
+  sdf_register("sales_cached") %>%
+  tbl_cache(sc, "sales_cached")
+
+# Repartition for better parallelism
+repartitioned <- sales_spark %>%
+  sdf_repartition(partitions = 200)
+
+# Coalesce to reduce partitions
+coalesced <- sales_spark %>%
+  sdf_coalesce(partitions = 10)
+
+# Persist with storage level
+library(sparklyr)
+spark_dataframe(sales_spark) %>%
+  invoke("persist", "MEMORY_AND_DISK")
+
+# Broadcast small tables for joins
+small_table_broadcast <- sdf_broadcast(small_table_spark)
+
+result <- large_table_spark %>%
+  left_join(small_table_broadcast, by = "key")
+
+# Monitor Spark UI
+spark_web(sc)
+
+# View execution plan
+explain(result)
+```
+
+## Writing Results
+
+```{r}
+# Write to CSV
+result %>%
+  spark_write_csv("output/results.csv", mode = "overwrite")
+
+# Write to Parquet (recommended)
+result %>%
+  spark_write_parquet("output/results.parquet", mode = "overwrite")
+
+# Write partitioned data
+result %>%
+  spark_write_parquet(
+    "output/results_partitioned.parquet",
+    mode = "overwrite",
+    partition_by = c("year", "month")
+  )
+
+# Write to Hive table
+result %>%
+  spark_write_table("result_table", mode = "overwrite")
+
+# Collect to R (use with caution on large data)
+result_local <- collect(result)
+
+# Collect sample
+sample_data <- result %>%
+  sdf_sample(fraction = 0.01) %>%
+  collect()
+```
+
+## Disconnect
+
+```{r}
+# Close connection
+spark_disconnect(sc)
+
+# Disconnect all
+spark_disconnect_all()
+```
+
+# 5. Distributed Computing with future
+
+## Basic future Usage
+
+```{r}
+library(future)
+library(future.apply)
+
+# Set parallel backend
+plan(multisession, workers = 4)
+
+# Or use cluster
+plan(cluster, workers = c("node1", "node2", "node3", "node4"))
+
+# Simple future
+f <- future({
+  # Long computation
+  result <- expensive_function()
+  result
+})
+
+# Continue with other work...
+
+# Get result when needed (blocks if not ready)
+result <- value(f)
+
+# Check if ready
+if (resolved(f)) {
+  result <- value(f)
+}
+```
+
+## Parallel Apply Functions
+
+```{r}
+library(future.apply)
+
+# Set parallel backend
+plan(multisession, workers = 8)
+
+# Parallel lapply
+result <- future_lapply(1:100, function(i) {
+  # Simulate computation
+  Sys.sleep(0.1)
+  i^2
+})
+
+# Parallel sapply
+result <- future_sapply(1:100, function(i) {
+  complex_calculation(i)
+})
+
+# Parallel Map
+result <- future_Map(function(x, y) {
+  x * y + runif(1)
+}, x = 1:100, y = 101:200)
+
+# Progress bar
+library(progressr)
+
+with_progress({
+  p <- progressor(steps = 100)
+  result <- future_lapply(1:100, function(i) {
+    p()
+    Sys.sleep(0.1)
+    i^2
+  })
+})
+```
+
+## Real Bioinformatics Example
+
+```{r}
+library(future.apply)
+library(Biostrings)
+
+# Process multiple BAM files in parallel
+plan(multisession, workers = 8)
+
+bam_files <- list.files("bam_files/", pattern = "\\.bam$", full.names = TRUE)
+
+# Count reads in parallel
+read_counts <- future_lapply(bam_files, function(bam_file) {
+  library(Rsamtools)
+
+  # Count mapped reads
+  param <- ScanBamParam(what = "seq")
+  reads <- scanBam(bam_file, param = param)
+
+  data.frame(
+    file = basename(bam_file),
+    total_reads = length(reads[[1]]$seq),
+    stringsAsFactors = FALSE
+  )
+})
+
+read_counts_df <- do.call(rbind, read_counts)
+
+# Parallel sequence analysis
+sequences <- readDNAStringSet("sequences.fasta")
+
+gc_content <- future_sapply(sequences, function(seq) {
+  letterFrequency(seq, letters = "GC", as.prob = TRUE)[1]
+})
+
+# Parallel BLAST searches
+blast_results <- future_lapply(sequences, function(seq) {
+  # Run BLAST
+  blast_result <- blast_sequence(seq)
+  blast_result
+})
+```
+
+# 6. Memory Management for Big Data
+
+## Chunked Processing
+
+```{r}
+# Process large CSV in chunks
+library(readr)
+
+process_chunk <- function(chunk, pos) {
+  # Process each chunk
+  chunk %>%
+    filter(value > 0) %>%
+    group_by(category) %>%
+    summarise(
+      total = sum(value),
+      count = n()
+    )
+}
+
+# Read and process in chunks
+result <- read_csv_chunked(
+  "large_file.csv",
+  callback = DataFrameCallback$new(process_chunk),
+  chunk_size = 10000
+)
+
+# Aggregate results
+final_result <- result %>%
+  group_by(category) %>%
+  summarise(
+    total = sum(total),
+    count = sum(count)
+  )
+```
+
+## ff Package for Out-of-Memory Data
+
+```{r}
+library(ff)
+
+# Create ff object
+x <- ff(vmode = "double", length = 1e9)
+
+# Read large file into ff
+data_ff <- read.csv.ffdf(
+  file = "large_file.csv",
+  header = TRUE,
+  first.rows = 10000,
+  next.rows = 50000
+)
+
+# Subset
+subset_data <- data_ff[data_ff$value > 0, ]
+
+# Compute statistics
+mean_value <- mean(data_ff$value)
+
+# Use with biglm for large-scale linear models
+library(biglm)
+model <- biglm(y ~ x1 + x2 + x3, data = data_ff)
+```
+
+## bigmemory Package
+
+```{r}
+library(bigmemory)
+
+# Create big.matrix
+x <- big.matrix(nrow = 1e6, ncol = 100, type = "double")
+
+# Attach to existing file
+x <- attach.big.matrix("data.desc")
+
+# Read from file
+x <- read.big.matrix(
+  "large_file.csv",
+  header = TRUE,
+  type = "double",
+  backingfile = "data.bin",
+  descriptorfile = "data.desc"
+)
+
+# Operations
+mean_col1 <- mean(x[, 1])
+subset_data <- x[x[, 1] > 0, ]
+
+# Use with biglm
+library(biganalytics)
+model <- biglm.big.matrix(y ~ x1 + x2, data = x)
+```
+
+## data.table for Efficient Processing
+
+```{r}
+library(data.table)
+
+# Read large CSV efficiently
+dt <- fread("large_file.csv")
+
+# Memory-efficient operations (modify by reference)
+dt[, new_col := value * 2]
+dt[value > 0, filtered_col := "high"]
+
+# Efficient grouping
+result <- dt[, .(
+  mean_val = mean(value),
+  sum_val = sum(value),
+  .N
+), by = .(category, subcategory)]
+
+# Rolling joins for time series
+setkey(dt, date)
+dt[other_dt, roll = "nearest"]
+
+# Fast file writing
+fwrite(dt, "output.csv")
+```
+
+# 7. Complete Cloud Pipeline Example
+
+## RNA-seq Analysis on AWS
+
+```{r}
+library(aws.s3)
+library(DESeq2)
+library(future.apply)
+
+# Setup
+Sys.setenv("AWS_DEFAULT_REGION" = "us-east-1")
+plan(multisession, workers = 8)
+
+# 1. Download count matrices from S3
+count_files <- get_bucket_df("rnaseq-data", prefix = "counts/") %>%
+  filter(grepl("\\.txt$", Key)) %>%
+  pull(Key)
+
+# Download in parallel
+local_files <- future_lapply(count_files, function(file) {
+  local_path <- file.path("temp", basename(file))
+  save_object(file, bucket = "rnaseq-data", file = local_path)
+  local_path
+})
+
+# 2. Read and combine count matrices
+count_data <- future_lapply(local_files, function(file) {
+  read.table(file, header = TRUE, row.names = 1)
+}) %>%
+  do.call(cbind, .)
+
+# 3. Read metadata from S3
+metadata <- s3read_using(
+  read.csv,
+  bucket = "rnaseq-data",
+  object = "metadata/sample_info.csv"
+)
+
+# 4. Run DESeq2
+dds <- DESeqDataSetFromMatrix(
+  countData = count_data,
+  colData = metadata,
+  design = ~ condition
+)
+
+dds <- DESeq(dds)
+results <- results(dds)
+
+# 5. Generate plots
+library(ggplot2)
+
+# Volcano plot
+volcano_plot <- ggplot(as.data.frame(results),
+                       aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = padj < 0.05 & abs(log2FoldChange) > 1)) +
+  theme_minimal() +
+  labs(title = "Volcano Plot")
+
+# 6. Upload results to S3
+s3write_using(
+  as.data.frame(results),
+  FUN = write.csv,
+  bucket = "rnaseq-data",
+  object = "results/deseq2_results.csv"
+)
+
+ggsave("volcano_plot.png", volcano_plot)
+put_object(
+  file = "volcano_plot.png",
+  bucket = "rnaseq-data",
+  object = "results/volcano_plot.png"
+)
+
+# 7. Save R session
+s3save(dds, results,
+       bucket = "rnaseq-data",
+       object = "results/workspace.RData")
+
+# Cleanup local files
+unlink("temp", recursive = TRUE)
+```
+
+## Spark-based Variant Analysis
+
+```{r}
+library(sparklyr)
+library(dplyr)
+
+# Connect to Spark on EMR
+sc <- spark_connect(master = "yarn", app_name = "variant-analysis")
+
+# Read VCF data (converted to Parquet)
+variants <- spark_read_parquet(
+  sc,
+  name = "variants",
+  path = "s3://genomics-data/vcf/variants.parquet"
+)
+
+# Filter and annotate variants
+filtered_variants <- variants %>%
+  filter(
+    QUAL > 30,
+    DP > 10,
+    !is.na(CHROM)
+  ) %>%
+  mutate(
+    is_snp = nchar(REF) == 1 & nchar(ALT) == 1,
+    is_indel = nchar(REF) != nchar(ALT)
+  ) %>%
+  group_by(CHROM, is_snp) %>%
+  summarise(
+    n_variants = n(),
+    avg_qual = mean(QUAL),
+    avg_depth = mean(DP)
+  )
+
+# Annotate with gene information
+genes <- spark_read_parquet(sc, "genes", "s3://genomics-data/genes.parquet")
+
+annotated_variants <- variants %>%
+  spark_apply(function(df) {
+    # Custom annotation function
+    df$gene <- annotate_with_genes(df$CHROM, df$POS)
+    df
+  }, columns = c(colnames(variants), "gene" = "character"))
+
+# Calculate per-sample statistics
+sample_stats <- variants %>%
+  group_by(SAMPLE) %>%
+  summarise(
+    total_variants = n(),
+    novel_variants = sum(is.na(RSID)),
+    avg_qual = mean(QUAL),
+    ts_tv_ratio = sum(is_transition) / sum(is_transversion)
+  )
+
+# Write results
+sample_stats %>%
+  spark_write_parquet(
+    "s3://genomics-data/results/sample_stats.parquet",
+    mode = "overwrite"
+  )
+
+# Collect small summary for reporting
+summary <- sample_stats %>%
+  collect()
+
+# Create report and upload
+library(rmarkdown)
+render("variant_report.Rmd", output_file = "report.html")
+
+library(aws.s3)
+put_object(
+  file = "report.html",
+  bucket = "genomics-data",
+  object = "reports/variant_report.html"
+)
+
+spark_disconnect(sc)
+```
+
+# 8. Best Practices
+
+## Cost Optimization
+
+```{r}
+# 1. Use appropriate instance types
+# - Use Spot instances for non-critical workloads
+# - Right-size instances based on profiling
+
+# 2. Store data efficiently
+# - Use Parquet instead of CSV
+# - Compress data
+# - Partition large datasets
+
+# 3. Clean up resources
+library(aws.s3)
+
+# Delete temporary objects
+delete_object("temp/data.csv", bucket = "my-bucket")
+
+# List and delete old files
+old_files <- get_bucket_df("my-bucket") %>%
+  filter(LastModified < Sys.Date() - 30)
+
+for (file in old_files$Key) {
+  delete_object(file, bucket = "my-bucket")
+}
+
+# 4. Use lifecycle policies
+# Set up S3 lifecycle rules to transition to cheaper storage
+```
+
+## Security
+
+```{r}
+# 1. Use IAM roles instead of hardcoded credentials
+
+# 2. Encrypt sensitive data
+library(aws.s3)
+
+# Upload with server-side encryption
+put_object(
+  file = "sensitive_data.csv",
+  bucket = "secure-bucket",
+  object = "data.csv",
+  headers = list(
+    "x-amz-server-side-encryption" = "AES256"
+  )
+)
+
+# 3. Use VPC for Spark clusters
+
+# 4. Rotate credentials regularly
+
+# 5. Use least privilege principle for IAM policies
+```
+
+## Monitoring and Logging
+
+```{r}
+# Log operations
+library(logger)
+
+log_info("Starting data processing pipeline")
+
+tryCatch({
+  # Pipeline code
+  data <- process_data()
+  log_info("Data processing completed successfully")
+}, error = function(e) {
+  log_error("Pipeline failed: {e$message}")
+  # Send alert
+  send_alert(e$message)
+})
+
+# Monitor Spark applications
+library(sparklyr)
+
+sc <- spark_connect(master = "yarn")
+
+# Check Spark UI
+spark_web(sc)
+
+# Get application logs
+spark_log(sc, n = 100)
+
+# CloudWatch integration for AWS
+library(paws)
+cw <- cloudwatch()
+
+cw$put_metric_data(
+  Namespace = "RAnalysis",
+  MetricData = list(
+    list(
+      MetricName = "ProcessingTime",
+      Value = processing_time,
+      Unit = "Seconds",
+      Timestamp = Sys.time()
+    )
+  )
+)
+```
+
+# Summary
+
+This document covered cloud computing and big data in R:
+
+**AWS Integration**:
+- S3 for object storage
+- EC2 for compute instances
+- Redshift for data warehousing
+- EMR for Spark clusters
+
+**Google Cloud Platform**:
+- Cloud Storage
+- BigQuery for analytics
+- Compute Engine
+
+**Apache Spark**:
+- sparklyr for distributed computing
+- Data manipulation with dplyr
+- Machine learning at scale
+- Feature engineering pipelines
+
+**Distributed Computing**:
+- future for parallel processing
+- Chunked data processing
+- Out-of-memory solutions (ff, bigmemory)
+
+**Real-World Pipelines**:
+- RNA-seq analysis on cloud
+- Large-scale variant analysis
+- Automated workflows
+
+**Best Practices**:
+- Cost optimization
+- Security considerations
+- Monitoring and logging
+
+**Key Principles**:
+- Scale compute and storage independently
+- Use appropriate tools for data size
+- Optimize for cost and performance
+- Implement proper security
+- Monitor resource usage
+
+**Next Steps**: Advanced Visualization Techniques
+
+# References
+
+- [AWS SDK for R (paws)](https://paws-r.github.io/)
+- [sparklyr Documentation](https://spark.rstudio.com/)
+- [Google Cloud R Packages](https://cloudyr.github.io/googleComputeEngineR/)
+- [future Package](https://future.futureverse.org/)
+- [Apache Spark Documentation](https://spark.apache.org/docs/latest/)

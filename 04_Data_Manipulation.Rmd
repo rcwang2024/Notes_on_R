@@ -1,0 +1,907 @@
+---
+title: "Data Manipulation in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Base R Data Manipulation
+
+## Subsetting and Indexing
+
+```{r}
+# Create sample data
+df <- data.frame(
+  id = 1:10,
+  name = paste0("Sample_", 1:10),
+  value = c(23, 45, 67, 12, 89, 34, 56, 78, 90, 23),
+  group = rep(c("A", "B"), each = 5)
+)
+
+# Subset rows
+df[df$value > 50, ]
+df[df$group == "A", ]
+df[df$value > 30 & df$group == "B", ]
+
+# Subset columns
+df[, c("name", "value")]
+df[c("name", "value")]
+
+# Subset function
+subset(df, value > 50)
+subset(df, value > 50, select = c(name, value))
+subset(df, group == "A", select = -id)
+
+# Order/sort
+df[order(df$value), ]
+df[order(-df$value), ]  # Descending
+df[order(df$group, -df$value), ]  # Multiple columns
+```
+
+## Adding and Modifying Columns
+
+```{r}
+# Add new column
+df$category <- ifelse(df$value > 50, "High", "Low")
+
+# Transform column
+df$value_log <- log(df$value)
+
+# Conditional transformation
+df$value_adjusted <- ifelse(df$group == "A", df$value * 1.1, df$value * 0.9)
+
+# Remove column
+df$value_log <- NULL
+```
+
+## Aggregation
+
+```{r}
+# aggregate() function
+aggregate(value ~ group, data = df, FUN = mean)
+aggregate(value ~ group, data = df, FUN = sum)
+aggregate(cbind(value, id) ~ group, data = df, FUN = mean)
+
+# tapply() - apply function to each group
+tapply(df$value, df$group, mean)
+tapply(df$value, df$group, sum)
+
+# by() - more general grouping
+by(df$value, df$group, summary)
+```
+
+## Merging/Joining
+
+```{r}
+# Create sample data
+df1 <- data.frame(id = 1:5, value_x = c(10, 20, 30, 40, 50))
+df2 <- data.frame(id = c(2, 3, 4, 5, 6), value_y = c(100, 200, 300, 400, 500))
+
+# Inner join
+merge(df1, df2, by = "id")
+
+# Left join
+merge(df1, df2, by = "id", all.x = TRUE)
+
+# Right join
+merge(df1, df2, by = "id", all.y = TRUE)
+
+# Outer join
+merge(df1, df2, by = "id", all = TRUE)
+
+# Join by different column names
+df1_renamed <- data.frame(id_x = 1:5, value = c(10, 20, 30, 40, 50))
+df2_renamed <- data.frame(id_y = c(2, 3, 4, 5, 6), value = c(100, 200, 300, 400, 500))
+merge(df1_renamed, df2_renamed, by.x = "id_x", by.y = "id_y")
+```
+
+# 2. dplyr Package (Tidyverse)
+
+dplyr is the most popular package for data manipulation in R.
+
+```{r}
+library(dplyr)
+```
+
+## Core dplyr Verbs
+
+### select() - Choose columns
+
+```{r}
+# Select specific columns
+df %>% select(name, value)
+
+# Select range of columns
+df %>% select(id:value)
+
+# Select by exclusion
+df %>% select(-id)
+
+# Select with helpers
+df %>% select(starts_with("val"))
+df %>% select(ends_with("e"))
+df %>% select(contains("am"))
+df %>% select(matches("^v"))
+
+# Reorder columns
+df %>% select(name, group, everything())
+```
+
+### filter() - Choose rows
+
+```{r}
+# Filter by condition
+df %>% filter(value > 50)
+
+# Multiple conditions (AND)
+df %>% filter(value > 30, group == "A")
+df %>% filter(value > 30 & group == "A")
+
+# OR condition
+df %>% filter(value > 80 | value < 20)
+
+# Filter by multiple values
+df %>% filter(group %in% c("A", "B"))
+
+# Filter out NA
+df %>% filter(!is.na(value))
+
+# Filter with string operations
+df %>% filter(grepl("Sample_[1-5]", name))
+
+# Slice rows by position
+df %>% slice(1:5)
+df %>% slice_head(n = 3)
+df %>% slice_tail(n = 3)
+df %>% slice_max(value, n = 3)
+df %>% slice_min(value, n = 3)
+df %>% slice_sample(n = 5)
+```
+
+### mutate() - Create/modify columns
+
+```{r}
+# Add new column
+df %>% mutate(value_squared = value^2)
+
+# Multiple new columns
+df %>% mutate(
+  value_log = log(value),
+  value_sqrt = sqrt(value),
+  value_category = ifelse(value > 50, "High", "Low")
+)
+
+# Transform existing column
+df %>% mutate(value = value * 2)
+
+# Conditional mutation
+df %>% mutate(
+  adjusted_value = case_when(
+    group == "A" & value > 50 ~ value * 1.2,
+    group == "A" & value <= 50 ~ value * 1.1,
+    group == "B" & value > 50 ~ value * 0.9,
+    TRUE ~ value  # default case
+  )
+)
+
+# Mutate with across() for multiple columns
+df %>% mutate(across(where(is.numeric), ~.x * 2))
+df %>% mutate(across(c(value, id), ~.x + 10))
+
+# transmute() - create new columns and drop old ones
+df %>% transmute(
+  name,
+  value_log = log(value)
+)
+```
+
+### summarise() / summarize() - Aggregate data
+
+```{r}
+# Single summary
+df %>% summarise(mean_value = mean(value))
+
+# Multiple summaries
+df %>% summarise(
+  n = n(),
+  mean_value = mean(value),
+  sd_value = sd(value),
+  min_value = min(value),
+  max_value = max(value),
+  median_value = median(value)
+)
+
+# With NA handling
+df %>% summarise(
+  mean_value = mean(value, na.rm = TRUE)
+)
+```
+
+### arrange() - Sort rows
+
+```{r}
+# Sort ascending
+df %>% arrange(value)
+
+# Sort descending
+df %>% arrange(desc(value))
+
+# Sort by multiple columns
+df %>% arrange(group, desc(value))
+```
+
+### group_by() - Group operations
+
+```{r}
+# Group and summarize
+df %>%
+  group_by(group) %>%
+  summarise(
+    n = n(),
+    mean_value = mean(value),
+    sd_value = sd(value)
+  )
+
+# Group and mutate (creates within-group calculations)
+df %>%
+  group_by(group) %>%
+  mutate(
+    mean_group = mean(value),
+    centered_value = value - mean(value)
+  )
+
+# Multiple grouping variables
+df %>%
+  group_by(group, category) %>%
+  summarise(count = n())
+
+# Ungroup
+df %>%
+  group_by(group) %>%
+  mutate(mean_group = mean(value)) %>%
+  ungroup()
+```
+
+## Advanced dplyr Operations
+
+### Window Functions
+
+```{r}
+# Ranking
+df %>%
+  mutate(
+    rank = row_number(value),
+    min_rank = min_rank(value),
+    dense_rank = dense_rank(value)
+  )
+
+# Grouped ranking
+df %>%
+  group_by(group) %>%
+  mutate(rank_in_group = row_number(desc(value)))
+
+# Cumulative operations
+df %>%
+  arrange(id) %>%
+  mutate(
+    cumsum_value = cumsum(value),
+    cummean_value = cummean(value)
+  )
+
+# Lead and lag
+df %>%
+  arrange(id) %>%
+  mutate(
+    previous_value = lag(value),
+    next_value = lead(value),
+    diff_from_previous = value - lag(value)
+  )
+```
+
+### Joins
+
+```{r}
+df1 <- data.frame(id = 1:5, value_x = c(10, 20, 30, 40, 50))
+df2 <- data.frame(id = c(2, 3, 4, 5, 6), value_y = c(100, 200, 300, 400, 500))
+
+# Inner join
+inner_join(df1, df2, by = "id")
+
+# Left join
+left_join(df1, df2, by = "id")
+
+# Right join
+right_join(df1, df2, by = "id")
+
+# Full join
+full_join(df1, df2, by = "id")
+
+# Semi join (keeps rows in df1 that have match in df2)
+semi_join(df1, df2, by = "id")
+
+# Anti join (keeps rows in df1 that DON'T have match in df2)
+anti_join(df1, df2, by = "id")
+
+# Join by different column names
+left_join(df1, df2, by = c("id" = "id"))
+
+# Join by multiple columns
+# df1 %>% left_join(df2, by = c("id", "group"))
+```
+
+### Reshaping with dplyr
+
+```{r}
+# Row-wise operations
+df %>%
+  rowwise() %>%
+  mutate(row_mean = mean(c(value, id)))
+
+# Counting
+df %>% count(group)
+df %>% count(group, sort = TRUE)
+
+# Distinct values
+df %>% distinct(group)
+df %>% distinct(group, .keep_all = TRUE)
+
+# Add count to data
+df %>% add_count(group)
+```
+
+## Piping
+
+```{r}
+# Chain multiple operations
+result <- df %>%
+  filter(value > 30) %>%
+  mutate(value_log = log(value)) %>%
+  group_by(group) %>%
+  summarise(
+    n = n(),
+    mean_log = mean(value_log)
+  ) %>%
+  arrange(desc(mean_log))
+
+result
+```
+
+# 3. tidyr Package
+
+tidyr is used for reshaping data.
+
+```{r}
+library(tidyr)
+```
+
+## Pivoting
+
+### pivot_longer() - Wide to long
+
+```{r}
+# Create wide data
+wide_df <- data.frame(
+  id = 1:3,
+  year_2020 = c(100, 200, 300),
+  year_2021 = c(150, 250, 350),
+  year_2022 = c(180, 280, 380)
+)
+
+# Pivot to long format
+long_df <- wide_df %>%
+  pivot_longer(
+    cols = starts_with("year_"),
+    names_to = "year",
+    values_to = "value"
+  )
+long_df
+
+# With name transformation
+wide_df %>%
+  pivot_longer(
+    cols = starts_with("year_"),
+    names_to = "year",
+    names_prefix = "year_",
+    names_transform = list(year = as.integer),
+    values_to = "value"
+  )
+```
+
+### pivot_wider() - Long to wide
+
+```{r}
+# Pivot back to wide format
+long_df %>%
+  pivot_wider(
+    names_from = year,
+    values_from = value
+  )
+
+# With name prefix
+long_df %>%
+  pivot_wider(
+    names_from = year,
+    names_prefix = "year_",
+    values_from = value
+  )
+```
+
+## Separating and Uniting
+
+### separate() - Split one column into multiple
+
+```{r}
+# Create data with combined column
+df_combined <- data.frame(
+  id = 1:3,
+  sample_info = c("Patient_A_2020", "Patient_B_2021", "Patient_C_2022")
+)
+
+# Separate into multiple columns
+df_combined %>%
+  separate(sample_info, into = c("type", "patient", "year"), sep = "_")
+
+# Keep original column
+df_combined %>%
+  separate(sample_info, into = c("type", "patient", "year"),
+           sep = "_", remove = FALSE)
+
+# separate_rows() - separate and expand to multiple rows
+df_multi <- data.frame(
+  id = 1:2,
+  values = c("1,2,3", "4,5,6")
+)
+
+df_multi %>%
+  separate_rows(values, sep = ",", convert = TRUE)
+```
+
+### unite() - Combine multiple columns
+
+```{r}
+# Create separate columns
+df_separate <- data.frame(
+  id = 1:3,
+  year = c(2020, 2021, 2022),
+  month = c("01", "02", "03"),
+  day = c("15", "20", "25")
+)
+
+# Unite into one column
+df_separate %>%
+  unite("date", year, month, day, sep = "-")
+
+# Keep original columns
+df_separate %>%
+  unite("date", year, month, day, sep = "-", remove = FALSE)
+```
+
+## Handling Missing Values
+
+```{r}
+# Create data with NAs
+df_na <- data.frame(
+  id = 1:5,
+  x = c(1, NA, 3, NA, 5),
+  y = c(NA, 2, 3, 4, 5)
+)
+
+# Drop rows with any NA
+df_na %>% drop_na()
+
+# Drop rows with NA in specific columns
+df_na %>% drop_na(x)
+
+# Fill NA with specific value
+df_na %>% replace_na(list(x = 0, y = 0))
+
+# Fill NA with previous/next value
+df_na %>% fill(x, .direction = "down")
+df_na %>% fill(x, .direction = "up")
+
+# complete() - make implicit missing values explicit
+df_incomplete <- data.frame(
+  group = c("A", "A", "B"),
+  value = c(1, 2, 3)
+)
+
+df_incomplete %>%
+  complete(group = c("A", "B", "C"))
+```
+
+## Nesting
+
+```{r}
+# Nest data
+nested_df <- df %>%
+  group_by(group) %>%
+  nest()
+
+nested_df
+
+# Access nested data
+nested_df$data[[1]]
+
+# Unnest
+nested_df %>%
+  unnest(cols = data)
+```
+
+# 4. data.table Package
+
+data.table is extremely fast for large datasets.
+
+```{r}
+library(data.table)
+
+# Create data.table
+dt <- data.table(
+  id = 1:10,
+  name = paste0("Sample_", 1:10),
+  value = c(23, 45, 67, 12, 89, 34, 56, 78, 90, 23),
+  group = rep(c("A", "B"), each = 5)
+)
+
+# Convert data.frame to data.table
+dt <- as.data.table(df)
+```
+
+## data.table Syntax: DT[i, j, by]
+
+- **i**: which rows (WHERE)
+- **j**: what to do (SELECT/UPDATE)
+- **by**: grouped by what (GROUP BY)
+
+### Selecting Rows (i)
+
+```{r}
+# Filter rows
+dt[value > 50]
+dt[group == "A"]
+dt[value > 30 & group == "B"]
+
+# Select by row number
+dt[1:5]
+
+# Order
+dt[order(value)]
+dt[order(-value)]
+```
+
+### Selecting Columns (j)
+
+```{r}
+# Select columns
+dt[, .(name, value)]
+dt[, list(name, value)]
+
+# Select single column (returns vector)
+dt[, value]
+
+# Select single column (returns data.table)
+dt[, .(value)]
+
+# Compute on columns
+dt[, mean(value)]
+dt[, .(mean_value = mean(value), sd_value = sd(value))]
+```
+
+### Grouping (by)
+
+```{r}
+# Group and summarize
+dt[, .(mean_value = mean(value)), by = group]
+
+# Multiple aggregations
+dt[, .(
+  n = .N,
+  mean_value = mean(value),
+  sd_value = sd(value)
+), by = group]
+
+# Group by multiple columns
+dt[, .(mean_value = mean(value)), by = .(group, category)]
+```
+
+## Modify by Reference
+
+data.table allows modification by reference (very fast, no copy).
+
+```{r}
+# Add column
+dt[, new_col := value * 2]
+
+# Multiple columns
+dt[, `:=`(
+  col1 = value + 10,
+  col2 = value - 10
+)]
+
+# Conditional update
+dt[group == "A", value := value * 1.1]
+
+# Delete column
+dt[, new_col := NULL]
+```
+
+## Advanced data.table
+
+### Chaining
+
+```{r}
+# Chain operations
+dt[value > 30][order(-value)][, .(name, value)]
+```
+
+### Special Symbols
+
+```{r}
+# .N - number of rows
+dt[, .N, by = group]
+
+# .I - row numbers
+dt[, .I[1:3], by = group]
+
+# .SD - Subset of Data
+dt[, lapply(.SD, mean), by = group, .SDcols = c("value", "id")]
+
+# .GRP - group counter
+dt[, group_id := .GRP, by = group]
+```
+
+### Keys and Fast Subsetting
+
+```{r}
+# Set key
+setkey(dt, group)
+
+# Fast subsetting by key
+dt["A"]
+dt[c("A", "B")]
+
+# Joins with keys
+dt1 <- data.table(id = 1:5, value_x = c(10, 20, 30, 40, 50), key = "id")
+dt2 <- data.table(id = c(2, 3, 4, 5, 6), value_y = c(100, 200, 300, 400, 500), key = "id")
+
+dt1[dt2]  # Right join
+merge(dt1, dt2, all.x = TRUE)  # Left join
+merge(dt1, dt2, all = TRUE)  # Outer join
+```
+
+### Reshaping
+
+```{r}
+# melt (wide to long)
+wide_dt <- data.table(
+  id = 1:3,
+  A = c(1, 2, 3),
+  B = c(4, 5, 6)
+)
+
+long_dt <- melt(wide_dt, id.vars = "id",
+                variable.name = "group", value.name = "value")
+long_dt
+
+# dcast (long to wide)
+dcast(long_dt, id ~ group, value.var = "value")
+```
+
+# 5. stringr Package (String Manipulation)
+
+```{r}
+library(stringr)
+
+# Create example strings
+genes <- c("TP53", "BRCA1", "EGFR", "KRAS")
+samples <- c("Sample_A_001", "Sample_B_002", "Sample_C_003")
+
+# String length
+str_length(genes)
+
+# Convert case
+str_to_upper(genes)
+str_to_lower(genes)
+str_to_title(samples)
+
+# Detect pattern
+str_detect(genes, "R")
+str_detect(genes, "^BR")  # Starts with BR
+
+# Subset strings
+str_subset(genes, "R")  # Keep matches
+str_subset(genes, "R", negate = TRUE)  # Keep non-matches
+
+# Extract matches
+str_extract(samples, "[A-Z]")
+str_extract_all(samples, "[0-9]")
+
+# Replace
+str_replace(samples, "_", "-")
+str_replace_all(samples, "_", "-")
+
+# Remove whitespace
+str_trim("  text  ")
+str_squish("  too    much    space  ")
+
+# Split strings
+str_split(samples, "_")
+str_split(samples, "_", simplify = TRUE)
+
+# Combine strings
+str_c(genes, "gene", sep = "_")
+str_glue("Gene: {genes}")
+
+# Pad strings
+str_pad(1:5, width = 3, pad = "0")
+
+# Truncate strings
+str_trunc("Very long string", width = 10)
+```
+
+# 6. lubridate Package (Date/Time)
+
+```{r}
+library(lubridate)
+
+# Parse dates
+ymd("2024-01-15")
+mdy("01/15/2024")
+dmy("15-01-2024")
+
+# Parse datetimes
+ymd_hms("2024-01-15 14:30:00")
+
+# Get components
+date <- ymd("2024-01-15")
+year(date)
+month(date)
+day(date)
+wday(date)
+wday(date, label = TRUE)
+
+# Set components
+year(date) <- 2025
+date
+
+# Arithmetic
+date + days(7)
+date + months(2)
+date + years(1)
+
+# Intervals
+start <- ymd("2024-01-01")
+end <- ymd("2024-12-31")
+interval(start, end)
+time_length(interval(start, end), "months")
+
+# Floor/ceiling dates
+floor_date(ymd("2024-01-15"), "month")
+ceiling_date(ymd("2024-01-15"), "month")
+round_date(ymd("2024-01-15"), "month")
+```
+
+# 7. Real-World Example Workflows
+
+## Example 1: Gene Expression Analysis
+
+```{r}
+# Simulated gene expression data
+set.seed(123)
+expression_data <- data.frame(
+  sample_id = rep(paste0("Sample_", 1:10), each = 100),
+  gene = rep(paste0("Gene_", 1:100), times = 10),
+  expression = rnorm(1000, mean = 100, sd = 20),
+  condition = rep(rep(c("Control", "Treatment"), each = 5), each = 100)
+)
+
+# Analysis workflow
+results <- expression_data %>%
+  group_by(gene, condition) %>%
+  summarise(
+    mean_expr = mean(expression),
+    sd_expr = sd(expression),
+    n = n()
+  ) %>%
+  pivot_wider(
+    names_from = condition,
+    values_from = c(mean_expr, sd_expr)
+  ) %>%
+  mutate(
+    fold_change = mean_expr_Treatment / mean_expr_Control,
+    log2_fc = log2(fold_change)
+  ) %>%
+  filter(abs(log2_fc) > 0.5) %>%
+  arrange(desc(abs(log2_fc)))
+
+head(results)
+```
+
+## Example 2: Clinical Data Processing
+
+```{r}
+# Simulated clinical data
+clinical <- data.frame(
+  patient_id = paste0("PT", 1:20),
+  age = sample(25:75, 20, replace = TRUE),
+  diagnosis_date = sample(seq(ymd("2020-01-01"), ymd("2023-12-31"), by = "day"), 20),
+  treatment = sample(c("A", "B", "C"), 20, replace = TRUE),
+  response = sample(c("Complete", "Partial", "None"), 20, replace = TRUE)
+)
+
+# Processing workflow
+clinical_processed <- clinical %>%
+  mutate(
+    age_group = case_when(
+      age < 40 ~ "Young",
+      age < 60 ~ "Middle",
+      TRUE ~ "Senior"
+    ),
+    year = year(diagnosis_date),
+    days_since = as.numeric(today() - diagnosis_date)
+  ) %>%
+  group_by(treatment, response) %>%
+  summarise(
+    n_patients = n(),
+    mean_age = mean(age),
+    .groups = "drop"
+  )
+
+clinical_processed
+```
+
+# Summary
+
+This document covered comprehensive data manipulation techniques:
+
+**Base R**:
+- Subsetting, indexing, merging
+- Simple but can be verbose
+
+**dplyr**:
+- select, filter, mutate, summarise, arrange, group_by
+- Pipe-friendly, readable syntax
+- Best for most data analysis tasks
+
+**tidyr**:
+- pivot_longer, pivot_wider
+- separate, unite
+- Handling missing values
+
+**data.table**:
+- DT[i, j, by] syntax
+- Extremely fast for large data
+- Modification by reference
+
+**stringr**:
+- Consistent string manipulation
+- Pattern matching and replacement
+
+**lubridate**:
+- Easy date/time handling
+- Arithmetic and parsing
+
+**When to use what**:
+- **dplyr/tidyr**: Most data analysis, readable code
+- **data.table**: Very large datasets, performance critical
+- **Base R**: Quick operations, no dependencies
+
+**Next Steps**: Proceed to Data Visualization to learn ggplot2 and other visualization tools.
+
+# References
+
+- [dplyr documentation](https://dplyr.tidyverse.org/)
+- [tidyr documentation](https://tidyr.tidyverse.org/)
+- [data.table documentation](https://rdatatable.gitlab.io/data.table/)
+- [stringr documentation](https://stringr.tidyverse.org/)
+- [lubridate documentation](https://lubridate.tidyverse.org/)
+- [R for Data Science](https://r4ds.had.co.nz/)

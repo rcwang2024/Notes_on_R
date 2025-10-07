@@ -1,0 +1,807 @@
+---
+title: "Data Import and Export in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Text Files (CSV, TSV, Delimited)
+
+## Base R Functions
+
+### read.table() Family
+
+```{r}
+# Read CSV (comma-separated)
+data <- read.csv("data.csv")
+data <- read.csv("data.csv", header = TRUE, stringsAsFactors = FALSE)
+
+# Read TSV (tab-separated)
+data <- read.delim("data.txt")
+data <- read.table("data.txt", header = TRUE, sep = "\t")
+
+# Custom delimiter
+data <- read.table("data.txt", header = TRUE, sep = ";")
+
+# Skip lines
+data <- read.csv("data.csv", skip = 2)
+
+# Specify column classes
+data <- read.csv("data.csv", colClasses = c("character", "numeric", "factor"))
+
+# Read only specific rows
+data <- read.csv("data.csv", nrows = 100)
+
+# Handle missing values
+data <- read.csv("data.csv", na.strings = c("NA", "N/A", "", "missing"))
+```
+
+### write.table() Family
+
+```{r}
+# Write CSV
+write.csv(data, "output.csv", row.names = FALSE)
+
+# Write TSV
+write.table(data, "output.txt", sep = "\t", row.names = FALSE, quote = FALSE)
+
+# Custom delimiter
+write.table(data, "output.txt", sep = ";", row.names = FALSE)
+
+# Control quoting
+write.csv(data, "output.csv", row.names = FALSE, quote = FALSE)
+```
+
+## readr Package (Tidyverse)
+
+Faster and more consistent than base R.
+
+```{r}
+library(readr)
+
+# Read CSV
+data <- read_csv("data.csv")
+
+# Read TSV
+data <- read_tsv("data.txt")
+
+# Read with custom delimiter
+data <- read_delim("data.txt", delim = ";")
+
+# Specify column types
+data <- read_csv("data.csv", col_types = cols(
+  id = col_integer(),
+  name = col_character(),
+  value = col_double(),
+  date = col_date(format = "%Y-%m-%d")
+))
+
+# Read from URL
+data <- read_csv("https://example.com/data.csv")
+
+# Read compressed files
+data <- read_csv("data.csv.gz")
+
+# Write files
+write_csv(data, "output.csv")
+write_tsv(data, "output.txt")
+write_delim(data, "output.txt", delim = ";")
+
+# Write compressed
+write_csv(data, "output.csv.gz")
+```
+
+## data.table::fread() (Fastest)
+
+```{r}
+library(data.table)
+
+# Read with fread (very fast for large files)
+data <- fread("data.csv")
+
+# Custom options
+data <- fread("data.csv", sep = ",", header = TRUE)
+
+# Select specific columns
+data <- fread("data.csv", select = c("col1", "col2", "col5"))
+
+# Drop columns
+data <- fread("data.csv", drop = c("col3", "col4"))
+
+# Write with fwrite
+fwrite(data, "output.csv")
+fwrite(data, "output.csv", sep = "\t")
+```
+
+# 2. Excel Files
+
+## readxl Package (Read Only)
+
+```{r}
+library(readxl)
+
+# Read Excel file (first sheet)
+data <- read_excel("data.xlsx")
+
+# Specify sheet by name or number
+data <- read_excel("data.xlsx", sheet = "Sheet2")
+data <- read_excel("data.xlsx", sheet = 2)
+
+# Specify range
+data <- read_excel("data.xlsx", range = "A1:D100")
+data <- read_excel("data.xlsx", range = "Sheet1!B2:F50")
+
+# Skip rows
+data <- read_excel("data.xlsx", skip = 3)
+
+# Specify column types
+data <- read_excel("data.xlsx", col_types = c("text", "numeric", "date"))
+
+# List sheets
+excel_sheets("data.xlsx")
+
+# Read all sheets
+all_sheets <- lapply(excel_sheets("data.xlsx"),
+                     function(x) read_excel("data.xlsx", sheet = x))
+names(all_sheets) <- excel_sheets("data.xlsx")
+```
+
+## openxlsx Package (Read and Write)
+
+```{r}
+library(openxlsx)
+
+# Read Excel
+data <- read.xlsx("data.xlsx", sheet = 1)
+
+# Write Excel
+write.xlsx(data, "output.xlsx")
+
+# Write multiple sheets
+list_of_datasets <- list("Sheet1" = df1, "Sheet2" = df2, "Sheet3" = df3)
+write.xlsx(list_of_datasets, "output.xlsx")
+
+# Create workbook with formatting
+wb <- createWorkbook()
+addWorksheet(wb, "Data")
+writeData(wb, "Data", data)
+
+# Add styling
+headerStyle <- createStyle(fontColour = "#ffffff", fgFill = "#4F81BD",
+                           halign = "center", valign = "center",
+                           textDecoration = "bold", border = "TopBottomLeftRight")
+addStyle(wb, sheet = "Data", headerStyle, rows = 1, cols = 1:ncol(data), gridExpand = TRUE)
+
+# Save workbook
+saveWorkbook(wb, "formatted_output.xlsx", overwrite = TRUE)
+```
+
+## writexl Package (Simple Writing)
+
+```{r}
+library(writexl)
+
+# Write single sheet
+write_xlsx(data, "output.xlsx")
+
+# Write multiple sheets
+write_xlsx(list(Sheet1 = df1, Sheet2 = df2), "output.xlsx")
+```
+
+# 3. Statistical Software Formats
+
+## haven Package (SPSS, SAS, Stata)
+
+```{r}
+library(haven)
+
+# Read SPSS
+data <- read_spss("data.sav")
+data <- read_sav("data.sav")
+
+# Read SAS
+data <- read_sas("data.sas7bdat")
+
+# Read Stata
+data <- read_dta("data.dta")
+
+# Write SPSS
+write_sav(data, "output.sav")
+
+# Write SAS
+write_sas(data, "output.sas7bdat")
+
+# Write Stata
+write_dta(data, "output.dta")
+```
+
+# 4. JSON Files
+
+## jsonlite Package
+
+```{r}
+library(jsonlite)
+
+# Read JSON
+data <- fromJSON("data.json")
+
+# Read from URL
+data <- fromJSON("https://api.example.com/data")
+
+# Pretty print
+data <- fromJSON("data.json", simplifyDataFrame = TRUE)
+
+# Write JSON
+write_json(data, "output.json")
+
+# Pretty formatted JSON
+write_json(data, "output.json", pretty = TRUE)
+
+# Convert to/from JSON strings
+json_string <- toJSON(data, pretty = TRUE)
+data_back <- fromJSON(json_string)
+```
+
+# 5. XML Files
+
+## xml2 Package
+
+```{r}
+library(xml2)
+
+# Read XML
+xml_data <- read_xml("data.xml")
+
+# Parse XML structure
+xml_structure(xml_data)
+
+# Extract elements
+nodes <- xml_find_all(xml_data, "//record")
+values <- xml_text(xml_find_all(xml_data, "//field[@name='value']"))
+
+# Extract attributes
+xml_attr(nodes, "id")
+
+# Convert to list
+xml_list <- as_list(xml_data)
+
+# Write XML
+write_xml(xml_data, "output.xml")
+```
+
+# 6. Database Connections
+
+## DBI and Database-Specific Packages
+
+### SQLite
+
+```{r}
+library(DBI)
+library(RSQLite)
+
+# Connect to database
+con <- dbConnect(RSQLite::SQLite(), "database.sqlite")
+
+# List tables
+dbListTables(con)
+
+# Read entire table
+data <- dbReadTable(con, "table_name")
+
+# Query database
+data <- dbGetQuery(con, "SELECT * FROM table_name WHERE value > 100")
+
+# Write data to database
+dbWriteTable(con, "new_table", data, overwrite = TRUE)
+
+# Parameterized queries (safe from SQL injection)
+query <- "SELECT * FROM table_name WHERE id = ?"
+data <- dbGetQuery(con, query, params = list(123))
+
+# Disconnect
+dbDisconnect(con)
+```
+
+### MySQL/MariaDB
+
+```{r}
+library(RMySQL)
+
+# Connect
+con <- dbConnect(RMySQL::MySQL(),
+                 dbname = "database_name",
+                 host = "localhost",
+                 port = 3306,
+                 user = "username",
+                 password = "password")
+
+# Query
+data <- dbGetQuery(con, "SELECT * FROM table_name")
+
+# Disconnect
+dbDisconnect(con)
+```
+
+### PostgreSQL
+
+```{r}
+library(RPostgres)
+
+# Connect
+con <- dbConnect(RPostgres::Postgres(),
+                 dbname = "database_name",
+                 host = "localhost",
+                 port = 5432,
+                 user = "username",
+                 password = "password")
+
+# Query
+data <- dbGetQuery(con, "SELECT * FROM table_name")
+
+# Disconnect
+dbDisconnect(con)
+```
+
+# 7. Web Scraping and APIs
+
+## Reading from URLs
+
+```{r}
+# Read CSV from URL
+data <- read.csv("https://example.com/data.csv")
+
+# With readr
+library(readr)
+data <- read_csv("https://example.com/data.csv")
+
+# Download file first
+download.file("https://example.com/data.csv", "local_data.csv")
+data <- read.csv("local_data.csv")
+```
+
+## httr Package for APIs
+
+```{r}
+library(httr)
+
+# GET request
+response <- GET("https://api.example.com/data")
+
+# Check status
+status_code(response)
+
+# Parse content
+content(response, "text")
+content(response, "parsed")
+
+# POST request
+response <- POST("https://api.example.com/submit",
+                 body = list(param1 = "value1", param2 = "value2"),
+                 encode = "json")
+
+# Authentication
+response <- GET("https://api.example.com/data",
+                authenticate("username", "password"))
+
+# API key in header
+response <- GET("https://api.example.com/data",
+                add_headers(Authorization = "Bearer YOUR_API_KEY"))
+```
+
+## rvest Package for Web Scraping
+
+```{r}
+library(rvest)
+
+# Read HTML page
+page <- read_html("https://example.com")
+
+# Extract elements
+titles <- page %>% html_nodes("h1") %>% html_text()
+links <- page %>% html_nodes("a") %>% html_attr("href")
+
+# Extract tables
+tables <- page %>% html_table(fill = TRUE)
+```
+
+# 8. R Data Formats
+
+## RDS (Single Object)
+
+```{r}
+# Save single object
+saveRDS(data, "data.rds")
+
+# Read single object
+data <- readRDS("data.rds")
+
+# Compressed RDS
+saveRDS(data, "data.rds", compress = "xz")
+```
+
+## RData/Rda (Multiple Objects)
+
+```{r}
+# Save multiple objects
+save(data1, data2, data3, file = "mydata.RData")
+
+# Save with compression
+save(data1, data2, file = "mydata.RData", compress = "xz")
+
+# Load objects (variables will be created in environment)
+load("mydata.RData")
+
+# Save all objects in workspace
+save.image("workspace.RData")
+```
+
+## feather Format (Fast, Cross-Language)
+
+```{r}
+library(feather)
+
+# Write
+write_feather(data, "data.feather")
+
+# Read
+data <- read_feather("data.feather")
+```
+
+## parquet Format (Columnar Storage)
+
+```{r}
+library(arrow)
+
+# Write
+write_parquet(data, "data.parquet")
+
+# Read
+data <- read_parquet("data.parquet")
+
+# Read specific columns
+data <- read_parquet("data.parquet", col_select = c("col1", "col2"))
+```
+
+# 9. Bioinformatics File Formats
+
+## FASTA Files
+
+```{r}
+library(Biostrings)
+
+# Read FASTA
+sequences <- readDNAStringSet("sequences.fasta")
+sequences <- readAAStringSet("proteins.fasta")
+
+# Access sequences
+sequences[[1]]
+names(sequences)
+
+# Write FASTA
+writeXStringSet(sequences, "output.fasta")
+```
+
+## FASTQ Files
+
+```{r}
+library(ShortRead)
+
+# Read FASTQ
+fastq <- readFastq("reads.fastq")
+
+# Access components
+sread(fastq)  # Sequences
+quality(fastq)  # Quality scores
+id(fastq)  # Read IDs
+
+# Write FASTQ
+writeFastq(fastq, "output.fastq")
+```
+
+## VCF Files (Variant Call Format)
+
+```{r}
+library(VariantAnnotation)
+
+# Read VCF
+vcf <- readVcf("variants.vcf", "hg38")
+
+# Access components
+rowRanges(vcf)  # Genomic positions
+info(vcf)  # Info fields
+geno(vcf)  # Genotype data
+
+# Write VCF
+writeVcf(vcf, "output.vcf")
+```
+
+## BAM Files (Binary Alignment)
+
+```{r}
+library(Rsamtools)
+
+# Index BAM file first
+indexBam("aligned.bam")
+
+# Read BAM
+bam <- scanBam("aligned.bam")
+
+# Read specific region
+param <- ScanBamParam(which = GRanges("chr1", IRanges(1000000, 2000000)))
+bam <- scanBam("aligned.bam", param = param)
+
+# What fields to import
+param <- ScanBamParam(what = c("qname", "flag", "rname", "pos", "mapq"))
+bam <- scanBam("aligned.bam", param = param)
+```
+
+## BED Files
+
+```{r}
+library(rtracklayer)
+
+# Read BED
+bed <- import.bed("regions.bed")
+
+# Read as GRanges
+gr <- import("regions.bed")
+
+# Write BED
+export.bed(gr, "output.bed")
+export(gr, "output.bed", format = "bed")
+```
+
+## GFF/GTF Files
+
+```{r}
+library(rtracklayer)
+
+# Read GTF
+gtf <- import.gff("genes.gtf")
+
+# Read GFF3
+gff <- import.gff3("genes.gff3")
+
+# Write
+export.gff(gtf, "output.gtf")
+export.gff3(gff, "output.gff3")
+```
+
+## GenomicRanges Objects
+
+```{r}
+library(GenomicRanges)
+
+# Save GRanges as RDS
+saveRDS(granges_object, "granges.rds")
+
+# Read back
+granges_object <- readRDS("granges.rds")
+```
+
+# 10. Large Files and Streaming
+
+## Reading Large Files in Chunks
+
+```{r}
+# Base R - read in chunks
+chunk_size <- 10000
+con <- file("large_file.csv", "r")
+
+while(length(chunk <- readLines(con, n = chunk_size)) > 0) {
+  # Process chunk
+  print(paste("Processing", length(chunk), "lines"))
+}
+close(con)
+
+# readr - read chunks
+library(readr)
+read_csv_chunked("large_file.csv",
+                 callback = DataFrameCallback$new(function(x, pos) {
+                   # Process chunk x
+                   print(nrow(x))
+                 }),
+                 chunk_size = 10000)
+```
+
+## data.table for Large Files
+
+```{r}
+library(data.table)
+
+# fread is very fast for large files
+data <- fread("large_file.csv")
+
+# Select columns to reduce memory
+data <- fread("large_file.csv", select = c("col1", "col2"))
+```
+
+## arrow for Huge Datasets
+
+```{r}
+library(arrow)
+
+# Read dataset from multiple parquet files
+dataset <- open_dataset("data_directory/", format = "parquet")
+
+# Query with dplyr
+library(dplyr)
+result <- dataset %>%
+  filter(value > 100) %>%
+  select(id, value, category) %>%
+  collect()  # Brings into memory
+```
+
+# 11. Compressed Files
+
+## Reading Compressed Files
+
+```{r}
+# Most R functions handle compression automatically
+
+# Gzip
+data <- read.csv("data.csv.gz")
+data <- read_csv("data.csv.gz")
+
+# Bzip2
+data <- read.csv("data.csv.bz2")
+
+# Xz
+data <- read.csv("data.csv.xz")
+
+# Zip (need to extract first or specify file)
+data <- read.csv(unz("archive.zip", "data.csv"))
+```
+
+## Writing Compressed Files
+
+```{r}
+# Gzip
+write.csv(data, gzfile("output.csv.gz"))
+write_csv(data, "output.csv.gz")  # readr handles automatically
+
+# Bzip2
+write.csv(data, bzfile("output.csv.bz2"))
+
+# Xz
+write.csv(data, xzfile("output.csv.xz"))
+```
+
+# 12. Google Sheets
+
+## googlesheets4 Package
+
+```{r}
+library(googlesheets4)
+
+# Authenticate
+gs4_auth()
+
+# Read from Google Sheets
+data <- read_sheet("spreadsheet_url_or_id")
+
+# Specific sheet
+data <- read_sheet("spreadsheet_url_or_id", sheet = "Sheet2")
+
+# Specific range
+data <- read_sheet("spreadsheet_url_or_id", range = "A1:D100")
+
+# Write to Google Sheets
+write_sheet(data, "spreadsheet_url_or_id")
+
+# Create new sheet
+sheet_write(data, ss = "spreadsheet_url_or_id", sheet = "NewSheet")
+```
+
+# 13. Cloud Storage
+
+## AWS S3
+
+```{r}
+library(aws.s3)
+
+# Read from S3
+data <- s3read_using(read.csv, object = "s3://bucket-name/data.csv")
+
+# Write to S3
+s3write_using(data, write.csv, object = "s3://bucket-name/output.csv")
+
+# List objects
+bucket_list_df("bucket-name")
+```
+
+# 14. Best Practices
+
+## File Path Management
+
+```{r}
+# Use here package for project-relative paths
+library(here)
+
+data <- read.csv(here("data", "raw", "data.csv"))
+write.csv(result, here("output", "results.csv"))
+
+# Use file.path for cross-platform compatibility
+data_path <- file.path("data", "raw", "data.csv")
+data <- read.csv(data_path)
+```
+
+## Error Handling
+
+```{r}
+# Check file exists
+if (file.exists("data.csv")) {
+  data <- read.csv("data.csv")
+} else {
+  stop("File not found")
+}
+
+# Try-catch for file operations
+data <- tryCatch({
+  read.csv("data.csv")
+}, error = function(e) {
+  message("Error reading file: ", e$message)
+  NULL
+})
+```
+
+## Memory Efficiency
+
+```{r}
+# Specify column types to save memory
+data <- read.csv("data.csv", colClasses = c(
+  "integer", "character", "numeric", "factor"
+))
+
+# Read only needed columns
+library(readr)
+data <- read_csv("data.csv", col_select = c(id, value, category))
+
+# Use data.table for large files
+library(data.table)
+data <- fread("large_file.csv", select = c("col1", "col2"))
+```
+
+# Summary
+
+This document covered:
+
+- **Text files**: CSV, TSV with base R, readr, data.table
+- **Excel files**: readxl, openxlsx, writexl
+- **Statistical formats**: SPSS, SAS, Stata with haven
+- **Structured data**: JSON, XML
+- **Databases**: SQLite, MySQL, PostgreSQL
+- **Web data**: APIs, web scraping
+- **R formats**: RDS, RData, feather, parquet
+- **Bioinformatics**: FASTA, FASTQ, VCF, BAM, BED, GTF/GFF
+- **Large files**: Chunked reading, arrow
+- **Compressed files**: gz, bz2, xz, zip
+- **Cloud storage**: Google Sheets, AWS S3
+
+**Key Recommendations**:
+- Use `readr` for CSV/TSV (fast, consistent)
+- Use `data.table::fread()` for very large files
+- Use `readxl` for reading Excel, `openxlsx` for writing
+- Use `arrow` and parquet for huge datasets
+- Always specify `stringsAsFactors = FALSE` in base R (or use readr)
+- Use compression for large files
+- Use proper error handling
+
+**Next Steps**: Proceed to Data Manipulation to learn dplyr, tidyr, and data.table.
+
+# References
+
+- [readr documentation](https://readr.tidyverse.org/)
+- [data.table documentation](https://rdatatable.gitlab.io/data.table/)
+- [Bioconductor workflows](https://bioconductor.org/packages/release/BiocViews.html#___Workflow)
+- [R Data Import/Export manual](https://cran.r-project.org/doc/manuals/r-release/R-data.html)

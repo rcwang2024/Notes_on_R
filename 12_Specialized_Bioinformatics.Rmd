@@ -1,0 +1,741 @@
+---
+title: "Specialized Bioinformatics Topics"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Multiple Sequence Alignment
+
+## Biostrings for Pairwise Alignment
+
+```{r}
+library(Biostrings)
+
+# Create sequences
+seq1 <- DNAString("ACGTACGTACGT")
+seq2 <- DNAString("ACGTAAGTACGT")
+
+# Pairwise alignment
+alignment <- pairwiseAlignment(seq1, seq2)
+alignment
+
+# Alignment score
+score(alignment)
+
+# View alignment
+writePairwiseAlignments(alignment)
+
+# Protein alignment
+prot1 <- AAString("PAWHEAE")
+prot2 <- AAString("HEAGAWGHE")
+pairwiseAlignment(prot1, prot2)
+```
+
+## msa for Multiple Alignment
+
+```{r}
+library(msa)
+
+# Load sequences
+sequences <- readAAStringSet(system.file("examples", "exampleAA.fasta",
+                                         package = "msa"))
+
+# Multiple alignment
+alignment <- msa(sequences, method = "ClustalW")
+# Or: msa(sequences, method = "ClustalOmega")
+# Or: msa(sequences, method = "Muscle")
+
+# View alignment
+print(alignment, show = "complete")
+
+# Convert to seqinr format
+alignment_seqinr <- msaConvert(alignment, type = "seqinr::alignment")
+
+# Export
+msaConvert(alignment, type = "bios2mds::align")
+```
+
+# 2. Phylogenetic Analysis
+
+## ape Package
+
+```{r}
+library(ape)
+
+# Read tree
+# tree <- read.tree("tree.nwk")
+
+# Create random tree
+tree <- rtree(10)
+
+# Plot tree
+plot(tree)
+
+# Root tree
+rooted_tree <- root(tree, outgroup = "t1")
+
+# Prune tree
+pruned_tree <- drop.tip(tree, c("t1", "t2"))
+
+# Ultrametric tree
+ultra_tree <- chronos(tree)
+
+# Node labels
+tree$node.label <- paste0("Node", 1:tree$Nnode)
+plot(tree, show.node.label = TRUE)
+
+# Branch lengths
+tree$edge.length
+```
+
+## phangorn for Phylogeny Construction
+
+```{r}
+library(phangorn)
+
+# Read alignment
+# alignment <- read.phyDat("alignment.fasta", format = "fasta")
+
+# Distance matrix
+# dist_matrix <- dist.ml(alignment)
+
+# Neighbor-joining tree
+# nj_tree <- NJ(dist_matrix)
+
+# Maximum likelihood
+# fit <- pml(nj_tree, alignment)
+# fit_optim <- optim.pml(fit, optNni = TRUE, optBf = TRUE,
+#                        optQ = TRUE, optGamma = TRUE)
+
+# Bootstrap
+# bs <- bootstrap.pml(fit_optim, bs = 100, optNni = TRUE)
+
+# Plot tree with bootstrap values
+# plotBS(fit_optim$tree, bs)
+```
+
+## ggtree for Tree Visualization
+
+```{r}
+library(ggtree)
+library(ggplot2)
+
+# Basic tree plot
+ggtree(tree) +
+  geom_tiplab() +
+  theme_tree2()
+
+# Circular tree
+ggtree(tree, layout = "circular") +
+  geom_tiplab()
+
+# With node labels
+ggtree(tree) +
+  geom_tiplab() +
+  geom_nodelab(color = "red")
+
+# Phylogram
+ggtree(tree, branch.length = "none") +
+  geom_tiplab()
+
+# Time tree
+ggtree(ultra_tree) +
+  theme_tree2() +
+  geom_tiplab()
+
+# Add data
+tip_data <- data.frame(
+  label = tree$tip.label,
+  category = sample(c("A", "B"), length(tree$tip.label), replace = TRUE)
+)
+
+ggtree(tree) %<+% tip_data +
+  geom_tiplab(aes(color = category)) +
+  geom_tippoint(aes(shape = category))
+```
+
+# 3. Network Analysis
+
+## igraph
+
+```{r}
+library(igraph)
+
+# Create graph
+g <- graph(c(1,2, 2,3, 3,4, 4,1, 1,5), directed = FALSE)
+
+# Plot
+plot(g)
+
+# From data frame
+edges <- data.frame(
+  from = c("A", "A", "B", "C"),
+  to = c("B", "C", "C", "D")
+)
+g <- graph_from_data_frame(edges, directed = FALSE)
+
+# Add node attributes
+V(g)$color <- "lightblue"
+V(g)$size <- 20
+
+# Add edge attributes
+E(g)$width <- c(1, 2, 3, 4)
+
+# Network metrics
+degree(g)
+betweenness(g)
+closeness(g)
+transitivity(g)
+
+# Community detection
+communities <- cluster_louvain(g)
+plot(communities, g)
+
+# Shortest paths
+shortest_paths(g, from = "A", to = "D")
+
+# Centrality
+degree_centrality <- degree(g)
+betweenness_centrality <- betweenness(g)
+```
+
+## Gene Regulatory Networks
+
+```{r}
+library(igraph)
+
+# Create gene network
+genes <- paste0("Gene", 1:20)
+edges <- data.frame(
+  regulator = sample(genes, 30, replace = TRUE),
+  target = sample(genes, 30, replace = TRUE)
+)
+grn <- graph_from_data_frame(edges, directed = TRUE)
+
+# Find hub genes
+hub_score(grn)
+authority_score(grn)
+
+# Subgraph
+subgraph <- induced_subgraph(grn, vids = 1:10)
+
+# Export
+write_graph(grn, "network.graphml", format = "graphml")
+```
+
+## visNetwork for Interactive Networks
+
+```{r}
+library(visNetwork)
+
+# Create nodes and edges
+nodes <- data.frame(
+  id = 1:5,
+  label = paste("Node", 1:5),
+  group = c("A", "A", "B", "B", "C")
+)
+
+edges <- data.frame(
+  from = c(1, 2, 3, 4),
+  to = c(2, 3, 4, 5)
+)
+
+# Interactive network
+visNetwork(nodes, edges) %>%
+  visGroups(groupname = "A", color = "red") %>%
+  visGroups(groupname = "B", color = "blue") %>%
+  visGroups(groupname = "C", color = "green") %>%
+  visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE)
+```
+
+# 4. Metabolomics
+
+## xcms for LC-MS Data
+
+```{r}
+library(xcms)
+
+# Read files
+# files <- c("sample1.mzML", "sample2.mzML")
+# raw_data <- readMSData(files, mode = "onDisk")
+
+# Peak detection
+# cwp <- CentWaveParam(peakwidth = c(20, 80), ppm = 25)
+# peaks <- findChromPeaks(raw_data, param = cwp)
+
+# Retention time correction
+# peaks <- adjustRtime(peaks, param = ObiwarpParam())
+
+# Peak grouping
+# peaks <- groupChromPeaks(peaks, param = PeakDensityParam())
+
+# Fill missing peaks
+# peaks <- fillChromPeaks(peaks)
+
+# Extract feature table
+# feature_table <- featureValues(peaks)
+```
+
+## CAMERA for Annotation
+
+```{r}
+library(CAMERA)
+
+# Annotate isotopes and adducts
+# xsa <- xsAnnotate(peaks)
+# xsa <- groupFWHM(xsa)
+# xsa <- findIsotopes(xsa)
+# xsa <- groupCorr(xsa)
+# xsa <- findAdducts(xsa, polarity = "positive")
+
+# Get annotation table
+# annotation <- getPeaklist(xsa)
+```
+
+# 5. Metagenomics and Microbiome
+
+## phyloseq
+
+```{r}
+library(phyloseq)
+
+# Create phyloseq object
+# otu_table <- read.csv("otu_table.csv", row.names = 1)
+# tax_table <- read.csv("taxonomy.csv", row.names = 1)
+# sample_data <- read.csv("metadata.csv", row.names = 1)
+
+# ps <- phyloseq(
+#   otu_table(otu_table, taxa_are_rows = TRUE),
+#   tax_table(as.matrix(tax_table)),
+#   sample_data(sample_data)
+# )
+
+# Example with included data
+data(GlobalPatterns)
+ps <- GlobalPatterns
+
+# Explore
+sample_names(ps)
+tax_table(ps)
+otu_table(ps)
+
+# Filter low abundance
+ps_filtered <- filter_taxa(ps, function(x) sum(x) > 100, TRUE)
+
+# Transform counts
+ps_rel <- transform_sample_counts(ps, function(x) x / sum(x))
+
+# Ordination
+ps_ord <- ordinate(ps, method = "PCoA", distance = "bray")
+plot_ordination(ps, ps_ord, color = "SampleType")
+
+# Barplot
+plot_bar(ps, fill = "Phylum")
+
+# Alpha diversity
+plot_richness(ps, measures = c("Shannon", "Simpson"))
+```
+
+## vegan for Ecology
+
+```{r}
+library(vegan)
+
+# Create community matrix
+data(varespec)
+
+# Diversity indices
+diversity(varespec, index = "shannon")
+diversity(varespec, index = "simpson")
+specnumber(varespec)  # Species richness
+
+# Ordination
+nmds <- metaMDS(varespec, distance = "bray")
+plot(nmds)
+
+# Permanova
+data(varechem)
+adonis2(varespec ~ N + P + K, data = varechem)
+
+# Distance matrix
+dist_matrix <- vegdist(varespec, method = "bray")
+```
+
+# 6. Population Genetics
+
+## adegenet
+
+```{r}
+library(adegenet)
+
+# Example data
+data(nancycats)
+
+# Summary
+summary(nancycats)
+
+# Principal Component Analysis
+pca_result <- glPca(nancycats)
+scatter(pca_result)
+
+# Discriminant Analysis
+dapc_result <- dapc(nancycats, n.pca = 30, n.da = 2)
+scatter(dapc_result)
+
+# Population structure
+compoplot(dapc_result)
+
+# Find optimal K
+grp <- find.clusters(nancycats, max.n.clust = 10)
+```
+
+## SNPRelate for GWAS
+
+```{r}
+library(SNPRelate)
+
+# Open GDS file
+# genofile <- snpgdsOpen("genotype.gds")
+
+# LD-based SNP pruning
+# snpset <- snpgdsLDpruning(genofile, ld.threshold = 0.2)
+
+# PCA
+# pca <- snpgdsPCA(genofile, snp.id = snpset$snp.id)
+# plot(pca$eigenvect[,1], pca$eigenvect[,2])
+
+# Identity by descent
+# ibd <- snpgdsIBDMLE(genofile, snp.id = snpset$snp.id)
+
+# Close file
+# snpgdsClose(genofile)
+```
+
+# 7. Protein Structure Analysis
+
+## bio3d
+
+```{r}
+library(bio3d)
+
+# Read PDB file
+# pdb <- read.pdb("1HEL")
+
+# Atom selection
+# ca_atoms <- atom.select(pdb, "calpha")
+
+# Visualize
+# view(pdb)
+
+# RMSD calculation
+# pdbs <- pdbaln(c("1HEL", "1LYZ"))
+# rmsd(pdbs)
+
+# Normal mode analysis
+# modes <- nma(pdb)
+# plot(modes)
+
+# Calculate secondary structure
+# ss <- dssp(pdb)
+
+# Distance matrix
+# dm <- dm(pdb, inds = ca_atoms)
+```
+
+## Rpdb
+
+```{r}
+library(Rpdb)
+
+# Read PDB
+# pdb <- read.pdb("structure.pdb")
+
+# Get coordinates
+# coords <- coords(pdb)
+
+# Atom types
+# atoms(pdb)
+
+# Residues
+# residues(pdb)
+```
+
+# 8. Integrative Multi-Omics
+
+## mixOmics
+
+```{r}
+library(mixOmics)
+
+# PLS-DA (Partial Least Squares Discriminant Analysis)
+# X <- as.matrix(gene_expression)
+# Y <- factor(sample_groups)
+# plsda_result <- plsda(X, Y, ncomp = 3)
+
+# Plot
+# plotIndiv(plsda_result)
+# plotVar(plsda_result)
+
+# DIABLO for multi-omics integration
+# data_list <- list(
+#   mRNA = mrna_data,
+#   protein = protein_data,
+#   metabolite = metabolite_data
+# )
+# design <- matrix(0.1, ncol = length(data_list), nrow = length(data_list))
+# diag(design) <- 0
+# result <- block.plsda(X = data_list, Y = outcome, ncomp = 5, design = design)
+
+# Circos plot
+# circosPlot(result)
+```
+
+## MOFA (Multi-Omics Factor Analysis)
+
+```{r}
+library(MOFA2)
+
+# Create MOFA object
+# data_list <- list(
+#   RNA = rna_matrix,
+#   Protein = protein_matrix,
+#   Metabolite = metabolite_matrix
+# )
+# MOFAobject <- create_mofa(data_list)
+
+# Prepare MOFA
+# model_opts <- get_default_model_options(MOFAobject)
+# train_opts <- get_default_training_options(MOFAobject)
+# MOFAobject <- prepare_mofa(MOFAobject, model_options = model_opts)
+
+# Train model
+# MOFAmodel <- run_mofa(MOFAobject, train_options = train_opts)
+
+# Visualize
+# plot_variance_explained(MOFAmodel)
+# plot_factor(MOFAmodel, factor = 1)
+```
+
+# 9. Spatial Transcriptomics
+
+## Seurat for Spatial Data
+
+```{r}
+library(Seurat)
+
+# Load spatial data
+# spatial_obj <- Load10X_Spatial("path/to/spatial/data")
+
+# Normalize
+# spatial_obj <- SCTransform(spatial_obj, assay = "Spatial")
+
+# Dimensionality reduction
+# spatial_obj <- RunPCA(spatial_obj)
+# spatial_obj <- RunUMAP(spatial_obj, dims = 1:30)
+
+# Clustering
+# spatial_obj <- FindNeighbors(spatial_obj, dims = 1:30)
+# spatial_obj <- FindClusters(spatial_obj)
+
+# Spatial visualization
+# SpatialDimPlot(spatial_obj)
+# SpatialFeaturePlot(spatial_obj, features = "gene_name")
+
+# Identify spatially variable features
+# spatial_obj <- FindSpatiallyVariableFeatures(spatial_obj)
+```
+
+# 10. Image Analysis
+
+## EBImage
+
+```{r}
+library(EBImage)
+
+# Read image
+# img <- readImage("cell_image.tif")
+
+# Display
+# display(img)
+
+# Threshold
+# img_thresh <- thresh(img, w = 10, h = 10, offset = 0.05)
+
+# Morphological operations
+# img_erode <- erode(img_thresh, kern = makeBrush(5, shape = "disc"))
+# img_dilate <- dilate(img_thresh, kern = makeBrush(5, shape = "disc"))
+
+# Watershed segmentation
+# nmask <- watershed(distmap(img_thresh), tolerance = 2)
+
+# Compute features
+# features <- computeFeatures.shape(nmask)
+# features_intensity <- computeFeatures.basic(nmask, img)
+
+# Count objects
+# max(nmask)
+```
+
+# 11. Text Mining for Biomedical Literature
+
+## pubmed.mineR
+
+```{r}
+library(pubmed.mineR)
+
+# Search PubMed
+# results <- pumed_search("CRISPR cancer therapy")
+
+# Download abstracts
+# abstracts <- readabs(results)
+
+# Extract information
+# genes <- Gengrep(abstracts)
+# diseases <- Disgrep(abstracts)
+
+# Co-occurrence
+# cooccurrence <- cooc(genes, diseases)
+```
+
+## rentrez
+
+```{r}
+library(rentrez)
+
+# Search databases
+entrez_dbs()
+
+# Search PubMed
+search_results <- entrez_search(db = "pubmed", term = "R bioconductor", retmax = 10)
+
+# Get summaries
+summaries <- entrez_summary(db = "pubmed", id = search_results$ids)
+
+# Fetch records
+records <- entrez_fetch(db = "pubmed", id = search_results$ids[1], rettype = "xml")
+```
+
+# 12. Simulation and Modeling
+
+## deSolve for ODE Models
+
+```{r}
+library(deSolve)
+
+# Define ODE system (SIR model)
+sir_model <- function(t, state, parameters) {
+  with(as.list(c(state, parameters)), {
+    dS <- -beta * S * I / N
+    dI <- beta * S * I / N - gamma * I
+    dR <- gamma * I
+    list(c(dS, dI, dR))
+  })
+}
+
+# Parameters
+parameters <- c(beta = 0.5, gamma = 0.1, N = 1000)
+state <- c(S = 999, I = 1, R = 0)
+times <- seq(0, 100, by = 0.1)
+
+# Solve
+out <- ode(y = state, times = times, func = sir_model, parms = parameters)
+
+# Plot
+library(ggplot2)
+out_df <- as.data.frame(out)
+ggplot(out_df) +
+  geom_line(aes(x = time, y = S, color = "Susceptible")) +
+  geom_line(aes(x = time, y = I, color = "Infected")) +
+  geom_line(aes(x = time, y = R, color = "Recovered")) +
+  labs(y = "Number of individuals", color = "Status")
+```
+
+## simmer for Discrete Event Simulation
+
+```{r}
+library(simmer)
+
+# Create simulation environment
+env <- simmer("Hospital")
+
+# Define trajectory
+patient <- trajectory() %>%
+  seize("doctor", 1) %>%
+  timeout(function() rnorm(1, 15, 5)) %>%
+  release("doctor", 1)
+
+# Run simulation
+env %>%
+  add_resource("doctor", capacity = 2) %>%
+  add_generator("patient", patient, function() rexp(1, 1/10)) %>%
+  run(until = 480)
+
+# Get results
+get_mon_arrivals(env)
+get_mon_resources(env)
+```
+
+# Summary
+
+This document covered specialized bioinformatics topics:
+
+**Sequence Analysis**:
+- Multiple sequence alignment (msa, Biostrings)
+- Phylogenetic analysis (ape, phangorn, ggtree)
+
+**Network Analysis**:
+- igraph for network construction
+- Gene regulatory networks
+- Interactive visualization (visNetwork)
+
+**Omics Technologies**:
+- Metabolomics (xcms, CAMERA)
+- Metagenomics (phyloseq, vegan)
+- Proteomics (bio3d)
+
+**Population Genetics**:
+- adegenet for population structure
+- SNPRelate for GWAS
+
+**Multi-Omics Integration**:
+- mixOmics for data integration
+- MOFA for factor analysis
+
+**Spatial Analysis**:
+- Spatial transcriptomics (Seurat)
+
+**Image Analysis**:
+- EBImage for microscopy
+
+**Literature Mining**:
+- PubMed searching and text mining
+
+**Modeling**:
+- ODE models (deSolve)
+- Discrete event simulation (simmer)
+
+**Key Principles**:
+- Use domain-specific packages
+- Understand your data type
+- Integrate multiple data sources
+- Validate results biologically
+
+**Next Steps**: Proceed to Web Applications and Dashboards for Shiny and interactive tools.
+
+# References
+
+- [Bioconductor Workflows](https://bioconductor.org/packages/release/BiocViews.html#___Workflow)
+- [phyloseq tutorials](https://joey711.github.io/phyloseq/)
+- [igraph documentation](https://igraph.org/r/)
+- [mixOmics](http://mixomics.org/)

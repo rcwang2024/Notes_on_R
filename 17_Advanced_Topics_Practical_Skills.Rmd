@@ -1,0 +1,1392 @@
+---
+title: "Advanced Topics and Practical Skills"
+author: "Essential Knowledge for Data Scientists"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# Introduction
+
+This document covers critical topics that are essential for real-world data analysis but often overlooked:
+
+1. **data.table** - High-performance data manipulation
+2. **Regular Expressions** - Text and sequence parsing
+3. **tidymodels** - Modern machine learning framework
+4. **Working with Databases** - Big data that doesn't fit in memory
+5. **String Processing** - Advanced text manipulation
+6. **Working with APIs** - Web data and services
+7. **Common Pitfalls** - What to avoid and how to debug
+8. **Best Practices** - Professional workflows
+
+---
+
+# Part 1: data.table - High Performance Computing
+
+## 1.1 Why data.table?
+
+- **Speed**: 10-100x faster than dplyr for large datasets
+- **Memory efficient**: Modify by reference (no copies)
+- **Concise syntax**: Powerful operations in compact code
+- **Big data**: Handles datasets larger than RAM
+
+```{r}
+library(data.table)
+library(dplyr)
+library(microbenchmark)
+```
+
+## 1.2 data.table Syntax: DT[i, j, by]
+
+The data.table syntax is: `DT[where, select|update, group by]`
+
+```{r}
+# Create data.table
+dt <- data.table(
+  id = 1:1000000,
+  group = sample(LETTERS[1:5], 1000000, replace = TRUE),
+  value = rnorm(1000000),
+  date = sample(seq(as.Date("2020-01-01"), as.Date("2023-12-31"), by = "day"),
+                1000000, replace = TRUE)
+)
+
+# Basic operations
+# Filter rows (i)
+dt[value > 0]
+dt[group %in% c("A", "B")]
+
+# Select columns (j)
+dt[, .(id, value)]
+dt[, list(id, value)]  # Same as above
+
+# Compute in j
+dt[, mean(value)]
+dt[, .(mean_val = mean(value), sd_val = sd(value))]
+
+# Group by (by)
+dt[, .(mean_val = mean(value)), by = group]
+dt[, .(mean_val = mean(value), count = .N), by = .(group, year = year(date))]
+
+# Combine all three
+dt[value > 0, .(mean_val = mean(value), .N), by = group]
+```
+
+## 1.3 Special Symbols in data.table
+
+```{r}
+# .N - number of rows
+dt[, .N]
+dt[, .N, by = group]
+
+# .SD - Subset of Data (current group)
+dt[, lapply(.SD, mean), by = group, .SDcols = c("value")]
+
+# .SDcols - specify columns for .SD
+dt[, lapply(.SD, mean), by = group, .SDcols = is.numeric]
+
+# .I - row numbers
+dt[, .I[value == max(value)], by = group]
+
+# .GRP - group counter
+dt[, group_id := .GRP, by = group]
+
+# .BY - current group values
+dt[, .(group_name = .BY[[1]], mean = mean(value)), by = group]
+```
+
+## 1.4 Modify by Reference (:=)
+
+**Key advantage**: No copies made, extremely fast and memory efficient
+
+```{r}
+# Add column
+dt[, new_col := value * 2]
+
+# Multiple columns
+dt[, `:=`(
+  col1 = value + 1,
+  col2 = value - 1,
+  col3 = value^2
+)]
+
+# Conditional update
+dt[group == "A", value := value * 1.1]
+
+# Delete column
+dt[, new_col := NULL]
+
+# Update by group
+dt[, value_centered := value - mean(value), by = group]
+
+# Functional form
+cols <- c("col1", "col2")
+dt[, (cols) := NULL]
+```
+
+## 1.5 Advanced Operations
+
+```{r}
+# Rolling joins
+dt1 <- data.table(id = c(1, 2, 3), val = c(10, 20, 30), key = "id")
+dt2 <- data.table(id = c(1.5, 2.5, 3.5), val = c(100, 200, 300))
+
+# Roll forward
+dt2[dt1, roll = TRUE]
+
+# Roll backward
+dt2[dt1, roll = -Inf]
+
+# Overlap joins (for genomic intervals)
+dt_intervals1 <- data.table(
+  chr = c("chr1", "chr1", "chr2"),
+  start = c(100, 200, 150),
+  end = c(150, 250, 200),
+  key = c("chr", "start", "end")
+)
+
+dt_intervals2 <- data.table(
+  chr = c("chr1", "chr1"),
+  start = c(120, 220),
+  end = c(130, 230)
+)
+
+# Find overlaps
+foverlaps(dt_intervals2, dt_intervals1, type = "any")
+
+# Reshape
+# melt (wide to long)
+dt_wide <- data.table(
+  id = 1:3,
+  A = c(1, 2, 3),
+  B = c(4, 5, 6),
+  C = c(7, 8, 9)
+)
+
+dt_long <- melt(dt_wide, id.vars = "id",
+                variable.name = "group", value.name = "value")
+
+# dcast (long to wide)
+dcast(dt_long, id ~ group, value.var = "value")
+
+# Chain operations
+result <- dt[
+  value > 0
+][
+  , .(mean_val = mean(value), .N), by = group
+][
+  order(-mean_val)
+][
+  1:3
+]
+```
+
+## 1.6 Keys and Indices
+
+```{r}
+# Set key for fast subsetting
+setkey(dt, group)
+
+# Now subsetting is blazing fast
+dt["A"]
+dt[c("A", "B")]
+
+# Multiple keys
+setkey(dt, group, id)
+dt[.("A", 1:100)]
+
+# Secondary indices
+setindex(dt, date)
+
+# Check keys and indices
+key(dt)
+indices(dt)
+
+# Fast aggregation with keys
+dt[, .(mean_val = mean(value)), keyby = group]  # Result is keyed
+```
+
+## 1.7 Performance Comparison
+
+```{r}
+# Create large datasets
+n <- 1e6
+df <- data.frame(
+  id = 1:n,
+  group = sample(LETTERS[1:10], n, replace = TRUE),
+  value = rnorm(n)
+)
+dt <- as.data.table(df)
+setkey(dt, group)
+
+# Benchmark: Grouping and summarizing
+microbenchmark(
+  dplyr = df %>% group_by(group) %>% summarise(mean = mean(value)),
+  data.table = dt[, .(mean = mean(value)), by = group],
+  times = 10
+)
+
+# Benchmark: Filtering
+microbenchmark(
+  dplyr = df %>% filter(value > 0),
+  data.table = dt[value > 0],
+  times = 10
+)
+
+# Benchmark: Adding column
+microbenchmark(
+  dplyr = df %>% mutate(new_col = value * 2),
+  data.table = dt[, new_col := value * 2],
+  times = 10
+)
+```
+
+## 1.8 Real-World Example: Gene Expression Analysis
+
+```{r}
+# Large gene expression dataset
+set.seed(123)
+expr_dt <- data.table(
+  gene_id = paste0("Gene_", rep(1:10000, each = 100)),
+  sample_id = paste0("Sample_", rep(1:100, times = 10000)),
+  condition = rep(rep(c("Control", "Treatment"), each = 50), times = 10000),
+  replicate = rep(rep(1:50, times = 2), times = 10000),
+  expression = rnorm(1000000, mean = 100, sd = 20)
+)
+
+# Complex analysis with data.table
+diff_expr <- expr_dt[
+  # Calculate mean expression by gene and condition
+  , .(mean_expr = mean(expression)), by = .(gene_id, condition)
+][
+  # Reshape to wide format
+  dcast(.SD, gene_id ~ condition, value.var = "mean_expr")
+][
+  # Calculate fold change
+  , `:=`(
+    fold_change = Treatment / Control,
+    log2fc = log2(Treatment / Control)
+  )
+][
+  # Filter significant changes
+  abs(log2fc) > 1
+][
+  # Sort by absolute fold change
+  order(-abs(log2fc))
+][
+  # Add rank
+  , rank := .I
+][
+  # Classify
+  , regulation := fcase(
+    log2fc > 1, "Up",
+    log2fc < -1, "Down",
+    default = "No change"
+  )
+]
+
+# Summary by regulation
+diff_expr[, .N, by = regulation]
+```
+
+---
+
+# Part 2: Regular Expressions
+
+## 2.1 Why Regular Expressions?
+
+Essential for:
+- Parsing FASTA headers
+- Extracting gene IDs
+- Cleaning messy text data
+- Validating formats
+- Pattern matching in sequences
+
+```{r}
+library(stringr)
+```
+
+## 2.2 Basic Patterns
+
+```{r}
+# Literal matching
+str_detect("ATCGATCG", "ATC")
+
+# Character classes
+str_extract_all("Sample_A1_B2", "[A-Z]")  # All uppercase letters
+str_extract_all("Sample_A1_B2", "[0-9]")  # All digits
+str_extract_all("Sample_A1_B2", "[A-Za-z0-9]")  # Alphanumeric
+
+# Predefined classes
+# \\d = [0-9] (digit)
+# \\D = [^0-9] (non-digit)
+# \\w = [A-Za-z0-9_] (word character)
+# \\W = [^A-Za-z0-9_] (non-word)
+# \\s = whitespace
+# \\S = non-whitespace
+
+str_extract_all("Sample_123", "\\d+")
+str_extract_all("Hello World", "\\w+")
+
+# Anchors
+str_detect("ATCG", "^AT")   # Starts with AT
+str_detect("ATCG", "CG$")   # Ends with CG
+str_detect("ATCG", "^ATCG$")  # Exact match
+
+# Quantifiers
+# * = 0 or more
+# + = 1 or more
+# ? = 0 or 1
+# {n} = exactly n
+# {n,} = n or more
+# {n,m} = between n and m
+
+str_extract("AAATTT", "A+")     # One or more A
+str_extract("AAATTT", "A{3}")   # Exactly 3 A's
+str_extract("AAATTT", "A{2,}")  # 2 or more A's
+```
+
+## 2.3 Bioinformatics Examples
+
+```{r}
+# Parse FASTA headers
+fasta_headers <- c(
+  ">gi|123456|ref|NM_001234.5| Homo sapiens gene [Homo sapiens]",
+  ">ENSG00000139618.13 BRCA2 gene [Homo sapiens]",
+  ">sp|P04637|P53_HUMAN Tumor suppressor p53"
+)
+
+# Extract RefSeq ID
+str_extract(fasta_headers, "NM_\\d+\\.\\d+")
+
+# Extract Ensembl ID
+str_extract(fasta_headers, "ENSG\\d+\\.\\d+")
+
+# Extract gene symbol
+str_extract(fasta_headers, "[A-Z0-9]+(?= gene)")
+
+# Parse complex IDs
+sample_ids <- c(
+  "Patient_001_Tumor_RNA_Rep1",
+  "Patient_002_Normal_DNA_Rep2",
+  "Patient_003_Tumor_RNA_Rep3"
+)
+
+# Extract all components
+data.frame(
+  sample = sample_ids,
+  patient = str_extract(sample_ids, "Patient_\\d+"),
+  tissue = str_extract(sample_ids, "(Tumor|Normal)"),
+  type = str_extract(sample_ids, "(RNA|DNA)"),
+  replicate = str_extract(sample_ids, "Rep\\d+")
+)
+
+# Validate formats
+# Check if sequence is valid DNA
+is_valid_dna <- function(seq) {
+  str_detect(seq, "^[ATCGN]+$")
+}
+
+is_valid_dna("ATCGATCG")  # TRUE
+is_valid_dna("ATCGATCX")  # FALSE
+
+# Validate gene ID format
+is_ensembl <- function(id) {
+  str_detect(id, "^ENS[A-Z]{0,3}G\\d{11}(\\.\\d+)?$")
+}
+
+is_ensembl("ENSG00000139618")      # TRUE
+is_ensembl("ENSG00000139618.13")   # TRUE
+is_ensembl("NM_001234")             # FALSE
+```
+
+## 2.4 Advanced Patterns
+
+```{r}
+# Groups and capture
+gene_info <- "BRCA1 (chr17:43044295-43125483)"
+
+# Extract with capture groups
+str_match(gene_info, "([A-Z0-9]+) \\(chr(\\d+):(\\d+)-(\\d+)\\)")
+
+# Named groups (using stringr 1.5.0+)
+pattern <- "(?<gene>[A-Z0-9]+) \\(chr(?<chr>\\d+):(?<start>\\d+)-(?<end>\\d+)\\)"
+
+# Lookahead and lookbehind
+# Positive lookahead: (?=...)
+# Negative lookahead: (?!...)
+# Positive lookbehind: (?<=...)
+# Negative lookbehind: (?<!...)
+
+# Extract number that comes before 'bp'
+str_extract("Length: 150bp", "\\d+(?=bp)")
+
+# Extract gene name that comes after 'gene='
+str_extract("feature gene=BRCA1", "(?<=gene=)[A-Z0-9]+")
+
+# Replace using patterns
+vcf_info <- "DP=50;AF=0.25;AC=2"
+str_replace_all(vcf_info, "(\\w+)=(\\d+\\.?\\d*)", "\\1: \\2")
+
+# Split complex strings
+str_split("gene1,gene2,gene3;gene4|gene5", "[,;|]")
+```
+
+## 2.5 Practical Examples
+
+```{r}
+# Clean messy gene symbols
+messy_genes <- c("  BRCA1  ", "tp53", "EGFR*", "kras-v1", "TP53 ")
+
+clean_genes <- messy_genes %>%
+  str_trim() %>%                    # Remove whitespace
+  str_to_upper() %>%                # Uppercase
+  str_remove_all("[^A-Z0-9]") %>%  # Remove special chars
+  unique()
+
+# Parse VCF INFO field
+vcf_info <- "DP=100;AF=0.45;AC=2;AN=4;BaseQRankSum=0.25"
+
+parse_vcf_info <- function(info) {
+  parts <- str_split(info, ";")[[1]]
+  keys <- str_extract(parts, "^[^=]+")
+  values <- str_extract(parts, "(?<==).+$")
+  setNames(as.list(values), keys)
+}
+
+parse_vcf_info(vcf_info)
+
+# Extract coordinates from multiple formats
+coords <- c(
+  "chr1:12345-67890",
+  "1:12345-67890",
+  "chr1 12345 67890",
+  "chromosome1:12345-67890"
+)
+
+extract_coords <- function(x) {
+  data.frame(
+    chr = str_extract(x, "(?:chr|chromosome)?(\\d+|[XY])", group = 1),
+    start = str_extract(x, "(?::| )(\\d+)", group = 1),
+    end = str_extract(x, "[-: ](\\d+)$", group = 1)
+  )
+}
+
+extract_coords(coords)
+
+# Find motifs in sequences
+sequence <- "ATCGATCGATCGTAGCTAGCTAGCTAG"
+
+# Find all ATG (start codons)
+str_locate_all(sequence, "ATG")
+
+# Find restriction sites (e.g., EcoRI: GAATTC)
+str_locate_all(sequence, "GAATTC")
+
+# Find pattern with wildcards (N = any nucleotide)
+# Using . for any character
+str_locate_all(sequence, "AT.G")
+```
+
+---
+
+# Part 3: tidymodels - Modern ML Framework
+
+## 3.1 Why tidymodels?
+
+- **Unified interface**: Consistent API across models
+- **Modular**: Separate packages for each step
+- **Tidy**: Integrates with tidyverse
+- **Modern**: Successor to caret
+- **Flexible**: Easy to customize workflows
+
+```{r}
+library(tidymodels)
+```
+
+## 3.2 Core Components
+
+```{r}
+# rsample: Data splitting and resampling
+# recipes: Preprocessing and feature engineering
+# parsnip: Model specification
+# workflows: Combine preprocessing + model
+# tune: Hyperparameter tuning
+# yardstick: Model evaluation
+
+# Load data
+data(mtcars)
+```
+
+## 3.3 Basic Workflow
+
+```{r}
+# 1. Split data
+set.seed(123)
+data_split <- initial_split(mtcars, prop = 0.7, strata = am)
+train_data <- training(data_split)
+test_data <- testing(data_split)
+
+# 2. Create recipe (preprocessing)
+rec <- recipe(mpg ~ ., data = train_data) %>%
+  step_normalize(all_numeric_predictors()) %>%
+  step_dummy(all_nominal_predictors())
+
+# 3. Specify model
+rf_spec <- rand_forest(trees = 100) %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
+
+# 4. Create workflow
+wf <- workflow() %>%
+  add_recipe(rec) %>%
+  add_model(rf_spec)
+
+# 5. Fit model
+fit <- wf %>% fit(train_data)
+
+# 6. Make predictions
+predictions <- predict(fit, test_data)
+
+# 7. Evaluate
+metrics <- metric_set(rmse, rsq, mae)
+bind_cols(test_data, predictions) %>%
+  metrics(truth = mpg, estimate = .pred)
+```
+
+## 3.4 Advanced Preprocessing
+
+```{r}
+# Complex recipe with many steps
+advanced_rec <- recipe(mpg ~ ., data = train_data) %>%
+  # Remove zero variance
+  step_zv(all_predictors()) %>%
+  # Remove highly correlated
+  step_corr(all_numeric_predictors(), threshold = 0.9) %>%
+  # Impute missing
+  step_impute_median(all_numeric_predictors()) %>%
+  # Create interactions
+  step_interact(~ hp:wt) %>%
+  # Polynomial features
+  step_poly(wt, degree = 2) %>%
+  # Normalize
+  step_normalize(all_numeric_predictors()) %>%
+  # One-hot encode
+  step_dummy(all_nominal_predictors(), one_hot = TRUE) %>%
+  # PCA
+  step_pca(all_numeric_predictors(), num_comp = 5)
+
+# Prepare recipe
+prepped_rec <- prep(advanced_rec, training = train_data)
+
+# Apply to data
+train_processed <- bake(prepped_rec, new_data = NULL)
+test_processed <- bake(prepped_rec, new_data = test_data)
+```
+
+## 3.5 Cross-Validation and Resampling
+
+```{r}
+# K-fold cross-validation
+set.seed(123)
+folds <- vfold_cv(train_data, v = 10, strata = am)
+
+# Fit resamples
+fit_resamples <- wf %>%
+  fit_resamples(
+    resamples = folds,
+    metrics = metric_set(rmse, rsq, mae)
+  )
+
+# View results
+collect_metrics(fit_resamples)
+
+# Bootstrap
+boot_samples <- bootstraps(train_data, times = 25)
+
+# Monte Carlo CV
+mc_samples <- mc_cv(train_data, prop = 0.8, times = 20)
+
+# Time series CV
+# Assuming time_series_data has a date column
+# time_slices <- rolling_origin(time_series_data, initial = 100, assess = 20, cumulative = FALSE)
+```
+
+## 3.6 Hyperparameter Tuning
+
+```{r}
+# Specify model with tunable parameters
+rf_tune_spec <- rand_forest(
+  trees = tune(),
+  mtry = tune(),
+  min_n = tune()
+) %>%
+  set_engine("ranger") %>%
+  set_mode("regression")
+
+# Create workflow
+tune_wf <- workflow() %>%
+  add_recipe(rec) %>%
+  add_model(rf_tune_spec)
+
+# Grid search
+rf_grid <- grid_regular(
+  trees(range = c(50, 200)),
+  mtry(range = c(2, 8)),
+  min_n(range = c(2, 10)),
+  levels = 3
+)
+
+# Tune
+set.seed(123)
+tune_results <- tune_wf %>%
+  tune_grid(
+    resamples = folds,
+    grid = rf_grid,
+    metrics = metric_set(rmse, rsq)
+  )
+
+# View results
+collect_metrics(tune_results)
+autoplot(tune_results)
+
+# Select best
+best_params <- select_best(tune_results, metric = "rmse")
+
+# Finalize workflow
+final_wf <- tune_wf %>%
+  finalize_workflow(best_params)
+
+# Fit on full training data
+final_fit <- final_wf %>% fit(train_data)
+
+# Evaluate on test
+test_results <- final_fit %>%
+  predict(test_data) %>%
+  bind_cols(test_data) %>%
+  metrics(truth = mpg, estimate = .pred)
+```
+
+## 3.7 Model Comparison
+
+```{r}
+# Define multiple models
+models <- list(
+  rf = rand_forest(trees = 100) %>%
+    set_engine("ranger") %>%
+    set_mode("regression"),
+
+  xgb = boost_tree(trees = 100) %>%
+    set_engine("xgboost") %>%
+    set_mode("regression"),
+
+  svm = svm_rbf() %>%
+    set_engine("kernlab") %>%
+    set_mode("regression")
+)
+
+# Fit all models
+results <- map_dfr(names(models), function(model_name) {
+  wf <- workflow() %>%
+    add_recipe(rec) %>%
+    add_model(models[[model_name]])
+
+  wf %>%
+    fit_resamples(folds) %>%
+    collect_metrics() %>%
+    mutate(model = model_name)
+})
+
+# Compare
+results %>%
+  filter(.metric == "rmse") %>%
+  ggplot(aes(x = model, y = mean)) +
+  geom_col() +
+  geom_errorbar(aes(ymin = mean - std_err, ymax = mean + std_err), width = 0.2) +
+  labs(title = "Model Comparison", y = "RMSE") +
+  theme_minimal()
+```
+
+## 3.8 Feature Engineering for Bioinformatics
+
+```{r}
+# Gene expression data example
+gene_rec <- recipe(outcome ~ ., data = gene_data) %>%
+  # Log transform expression values
+  step_log(starts_with("gene_"), offset = 1) %>%
+  # Normalize
+  step_normalize(all_numeric_predictors()) %>%
+  # Remove low variance genes
+  step_zv(all_predictors()) %>%
+  # Feature selection based on correlation
+  step_corr(all_numeric_predictors(), threshold = 0.95) %>%
+  # PCA for dimensionality reduction
+  step_pca(all_numeric_predictors(), num_comp = 50) %>%
+  # Or use alternative: sparse PCA
+  # step_ica(all_numeric_predictors(), num_comp = 20) %>%
+  # Handle batch effects
+  step_center(all_numeric_predictors()) %>%
+  step_scale(all_numeric_predictors())
+```
+
+---
+
+# Part 4: Working with Databases
+
+## 4.1 Why Databases?
+
+- Data too large for memory
+- Central data storage
+- Query only what you need
+- Concurrent access
+- Data integrity
+
+```{r}
+library(DBI)
+library(RSQLite)
+library(dplyr)
+library(dbplyr)
+```
+
+## 4.2 SQLite (Local Database)
+
+```{r}
+# Create/connect to database
+con <- dbConnect(SQLite(), "mydata.db")
+
+# Write data to database
+dbWriteTable(con, "mtcars", mtcars, overwrite = TRUE)
+dbWriteTable(con, "iris", iris, overwrite = TRUE)
+
+# List tables
+dbListTables(con)
+
+# Read entire table
+dbReadTable(con, "mtcars")
+
+# Execute SQL query
+result <- dbGetQuery(con, "
+  SELECT cyl, COUNT(*) as count, AVG(mpg) as avg_mpg
+  FROM mtcars
+  GROUP BY cyl
+")
+
+# Parameterized queries (prevent SQL injection)
+cyl_value <- 6
+result <- dbGetQuery(con, "
+  SELECT * FROM mtcars WHERE cyl = ?
+", params = list(cyl_value))
+
+# Write query results
+dbExecute(con, "
+  CREATE TABLE high_mpg AS
+  SELECT * FROM mtcars WHERE mpg > 25
+")
+
+# Disconnect
+dbDisconnect(con)
+```
+
+## 4.3 dplyr with Databases (dbplyr)
+
+```{r}
+# Connect
+con <- dbConnect(SQLite(), "mydata.db")
+
+# Create table reference
+mtcars_db <- tbl(con, "mtcars")
+
+# Use dplyr syntax (lazy evaluation)
+query <- mtcars_db %>%
+  filter(cyl == 6) %>%
+  select(mpg, wt, hp) %>%
+  mutate(efficiency = mpg / wt) %>%
+  arrange(desc(efficiency))
+
+# View SQL query
+show_query(query)
+
+# Execute and bring to R
+result <- collect(query)
+
+# Aggregation
+summary <- mtcars_db %>%
+  group_by(cyl) %>%
+  summarise(
+    n = n(),
+    mean_mpg = mean(mpg, na.rm = TRUE),
+    sd_mpg = sd(mpg, na.rm = TRUE)
+  ) %>%
+  collect()
+
+# Joins
+iris_db <- tbl(con, "iris")
+
+# Join tables (if they have common column)
+# joined <- mtcars_db %>%
+#   left_join(other_table, by = "id")
+
+dbDisconnect(con)
+```
+
+## 4.4 PostgreSQL (Production Database)
+
+```{r}
+library(RPostgres)
+
+# Connect to PostgreSQL
+con <- dbConnect(
+  Postgres(),
+  host = "localhost",
+  port = 5432,
+  dbname = "mydb",
+  user = "username",
+  password = "password"
+)
+
+# Create table with appropriate types
+dbExecute(con, "
+  CREATE TABLE IF NOT EXISTS experiments (
+    exp_id SERIAL PRIMARY KEY,
+    gene_id VARCHAR(50),
+    sample_id VARCHAR(50),
+    expression DOUBLE PRECISION,
+    pvalue DOUBLE PRECISION,
+    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  )
+")
+
+# Bulk insert (efficient)
+experiments <- data.frame(
+  gene_id = paste0("GENE", 1:1000),
+  sample_id = paste0("SAMPLE", rep(1:10, each = 100)),
+  expression = rnorm(1000, 100, 20),
+  pvalue = runif(1000)
+)
+
+dbWriteTable(con, "experiments", experiments, append = TRUE)
+
+# Create index for faster queries
+dbExecute(con, "CREATE INDEX idx_gene ON experiments(gene_id)")
+
+# Complex query
+result <- dbGetQuery(con, "
+  SELECT
+    gene_id,
+    AVG(expression) as mean_expr,
+    STDDEV(expression) as sd_expr,
+    MIN(pvalue) as min_pval
+  FROM experiments
+  WHERE expression > 50
+  GROUP BY gene_id
+  HAVING MIN(pvalue) < 0.05
+  ORDER BY mean_expr DESC
+  LIMIT 100
+")
+
+dbDisconnect(con)
+```
+
+## 4.5 Working with Large Datasets
+
+```{r}
+# Read in chunks
+con <- dbConnect(SQLite(), "large_data.db")
+
+# Process in batches
+process_in_batches <- function(table_name, batch_size = 10000) {
+  # Get total rows
+  total <- dbGetQuery(con, paste("SELECT COUNT(*) FROM", table_name))[[1]]
+
+  results <- list()
+  for (i in seq(1, total, batch_size)) {
+    # Read batch
+    batch <- dbGetQuery(con, paste(
+      "SELECT * FROM", table_name,
+      "LIMIT", batch_size, "OFFSET", i - 1
+    ))
+
+    # Process batch
+    results[[length(results) + 1]] <- process_batch(batch)
+  }
+
+  bind_rows(results)
+}
+
+# Write in chunks
+write_large_dataset <- function(data, table_name, chunk_size = 10000) {
+  # Split into chunks
+  n_chunks <- ceiling(nrow(data) / chunk_size)
+
+  for (i in 1:n_chunks) {
+    start_row <- (i - 1) * chunk_size + 1
+    end_row <- min(i * chunk_size, nrow(data))
+    chunk <- data[start_row:end_row, ]
+
+    dbWriteTable(con, table_name, chunk, append = (i > 1))
+  }
+}
+```
+
+---
+
+# Part 5: Common Pitfalls and Debugging
+
+## 5.1 Common Mistakes
+
+```{r}
+# 1. Factor vs Character
+df <- data.frame(gene = c("BRCA1", "TP53"), stringsAsFactors = TRUE)
+df$gene[1] <- "EGFR"  # Warning! May not work as expected
+# Fix: Use stringsAsFactors = FALSE or tibbles
+
+# 2. Floating point comparison
+0.1 + 0.2 == 0.3  # FALSE!
+# Fix: Use all.equal() or near()
+all.equal(0.1 + 0.2, 0.3)
+dplyr::near(0.1 + 0.2, 0.3)
+
+# 3. Growing objects in loops
+slow <- function(n) {
+  result <- c()
+  for (i in 1:n) {
+    result <- c(result, i^2)  # BAD: Creates copy each time
+  }
+}
+# Fix: Preallocate
+fast <- function(n) {
+  result <- numeric(n)
+  for (i in 1:n) {
+    result[i] <- i^2
+  }
+}
+
+# 4. Forgetting to return in functions
+bad_function <- function(x) {
+  result <- x * 2
+  # Forgot to return!
+}
+# Fix:
+good_function <- function(x) {
+  result <- x * 2
+  return(result)  # Or just: result
+}
+
+# 5. Using = instead of == in conditions
+if (x = 5) { }  # Error! Assignment, not comparison
+if (x == 5) { }  # Correct
+
+# 6. Not handling NAs
+mean(c(1, 2, NA, 4))  # Returns NA
+mean(c(1, 2, NA, 4), na.rm = TRUE)  # Returns mean
+
+# 7. Incorrect subsetting
+df[1]     # Returns data frame with first column
+df[[1]]   # Returns vector of first column
+df[, 1]   # Returns vector (or data frame if drop=FALSE)
+
+# 8. Mixing up & and &&
+c(TRUE, FALSE) & c(TRUE, TRUE)   # Vectorized AND
+TRUE && FALSE                     # Scalar AND (short-circuit)
+
+# 9. Forgetting quotes in aes()
+ggplot(mtcars, aes(x = "mpg"))  # Wrong! Treats as string
+ggplot(mtcars, aes(x = mpg))    # Correct
+
+# 10. Not checking data types
+str(data)  # Always check structure first!
+```
+
+## 5.2 Debugging Techniques
+
+```{r}
+# 1. Print debugging
+my_function <- function(x) {
+  print(paste("Input:", x))
+  result <- x * 2
+  print(paste("Result:", result))
+  return(result)
+}
+
+# 2. browser() - Interactive debugging
+debug_function <- function(x) {
+  y <- x * 2
+  browser()  # Execution stops here
+  z <- y + 1
+  return(z)
+}
+
+# 3. debug() - Step through function
+debug(my_function)
+my_function(5)
+undebug(my_function)
+
+# 4. trace() - Add code at specific points
+trace(mean, quote(print(x)))
+mean(1:10)
+untrace(mean)
+
+# 5. traceback() - See call stack after error
+error_function <- function() {
+  stop("Error!")
+}
+# After error: traceback()
+
+# 6. options(error = recover) - Interactive debugging on error
+options(error = recover)
+# Run code that errors
+# options(error = NULL)  # Reset
+
+# 7. tryCatch() - Handle errors gracefully
+safe_function <- function(x) {
+  tryCatch(
+    {
+      result <- log(x)
+      return(result)
+    },
+    error = function(e) {
+      message("Error: ", e$message)
+      return(NA)
+    },
+    warning = function(w) {
+      message("Warning: ", w$message)
+    }
+  )
+}
+
+# 8. Assertions
+library(assertthat)
+validate_input <- function(x) {
+  assert_that(is.numeric(x))
+  assert_that(all(x >= 0))
+  assert_that(length(x) > 0)
+}
+
+# 9. Unit tests
+library(testthat)
+test_that("Function works correctly", {
+  expect_equal(my_function(2), 4)
+  expect_error(my_function("text"))
+})
+
+# 10. Profiling
+library(profvis)
+profvis({
+  # Code to profile
+  x <- rnorm(1e6)
+  y <- x^2
+  z <- sum(y)
+})
+```
+
+## 5.3 Memory Issues
+
+```{r}
+# Check object size
+object.size(large_object)
+format(object.size(large_object), units = "MB")
+
+# List all objects and sizes
+sapply(ls(), function(x) {
+  format(object.size(get(x)), units = "MB")
+})
+
+# Remove objects
+rm(large_object)
+gc()  # Garbage collection
+
+# Use data.table for large data
+# Use databases for very large data
+# Process in chunks
+# Use sampling for development
+
+# Memory-efficient alternatives
+# Instead of: rbind in loop
+result <- lapply(files, read.csv) %>% bind_rows()
+
+# Monitor memory
+# library(pryr)
+# mem_used()
+# mem_change(x <- rnorm(1e6))
+```
+
+---
+
+# Part 6: Best Practices
+
+## 6.1 Project Organization
+
+```
+project/
+├── README.md              # Project description
+├── project.Rproj         # R project file
+├── renv/                 # Package management
+├── data/
+│   ├── raw/             # Original, immutable data
+│   └── processed/       # Cleaned data
+├── R/                    # Function definitions
+│   ├── utils.R
+│   ├── analysis.R
+│   └── visualization.R
+├── scripts/              # Analysis scripts
+│   ├── 01_data_prep.R
+│   ├── 02_analysis.R
+│   └── 03_visualization.R
+├── notebooks/            # R Markdown analyses
+├── output/
+│   ├── figures/
+│   ├── tables/
+│   └── reports/
+├── tests/                # Unit tests
+└── docs/                 # Documentation
+```
+
+## 6.2 Code Style
+
+```{r}
+# Use meaningful names
+# Bad:
+x <- function(y) { y * 2 }
+
+# Good:
+double_value <- function(input_value) {
+  result <- input_value * 2
+  return(result)
+}
+
+# Use consistent naming convention
+# snake_case (recommended for R)
+calculate_mean_expression <- function() {}
+
+# Use spacing
+# Bad:
+result<-x+y*2
+
+# Good:
+result <- x + y * 2
+
+# Limit line length (80 characters)
+# Use styler package
+library(styler)
+style_file("script.R")
+
+# Use lintr for code quality
+library(lintr)
+lint("script.R")
+
+# Comment your code
+# Explain WHY, not WHAT
+# Bad:
+x <- x + 1  # Add 1 to x
+
+# Good:
+x <- x + 1  # Adjust for 1-based indexing
+```
+
+## 6.3 Function Design
+
+```{r}
+# Good function design
+calculate_statistics <- function(data,
+                                  columns = NULL,
+                                  na.rm = TRUE,
+                                  verbose = FALSE) {
+  # Validate inputs
+  stopifnot(is.data.frame(data))
+
+  if (verbose) message("Calculating statistics...")
+
+  # Select columns
+  if (is.null(columns)) {
+    columns <- names(data)[sapply(data, is.numeric)]
+  }
+
+  # Calculate
+  results <- data %>%
+    select(all_of(columns)) %>%
+    summarise(across(everything(),
+                     list(mean = ~mean(., na.rm = na.rm),
+                          sd = ~sd(., na.rm = na.rm)),
+                     .names = "{.col}_{.fn}"))
+
+  return(results)
+}
+
+# Document functions
+#' Calculate Summary Statistics
+#'
+#' @param data A data frame
+#' @param columns Character vector of column names
+#' @param na.rm Logical, remove NA values?
+#' @param verbose Logical, print messages?
+#' @return A data frame with summary statistics
+#' @examples
+#' calculate_statistics(mtcars, c("mpg", "hp"))
+```
+
+## 6.4 Error Handling
+
+```{r}
+# Defensive programming
+process_data <- function(file_path) {
+  # Check file exists
+  if (!file.exists(file_path)) {
+    stop("File not found: ", file_path)
+  }
+
+  # Try reading file
+  data <- tryCatch(
+    read.csv(file_path),
+    error = function(e) {
+      stop("Error reading file: ", e$message)
+    }
+  )
+
+  # Validate data
+  if (nrow(data) == 0) {
+    warning("Empty dataset")
+    return(NULL)
+  }
+
+  # Process...
+  return(data)
+}
+```
+
+## 6.5 Testing
+
+```{r}
+library(testthat)
+
+# Write tests
+test_that("calculate_mean works correctly", {
+  # Test normal case
+  expect_equal(calculate_mean(c(1, 2, 3)), 2)
+
+  # Test edge cases
+  expect_equal(calculate_mean(c(5)), 5)
+  expect_true(is.na(calculate_mean(c())))
+
+  # Test error handling
+  expect_error(calculate_mean("text"))
+  expect_error(calculate_mean(NULL))
+})
+
+# Test with NA
+test_that("handles NA values", {
+  expect_true(is.na(calculate_mean(c(1, NA, 3))))
+  expect_equal(calculate_mean(c(1, NA, 3), na.rm = TRUE), 2)
+})
+```
+
+## 6.6 Documentation
+
+```{r}
+# README.md template
+# # Project Title
+#
+# ## Description
+# Brief description of the project
+#
+# ## Installation
+# ```r
+# # Install required packages
+# install.packages(c("dplyr", "ggplot2"))
+# ```
+#
+# ## Usage
+# ```r
+# # Example usage
+# source("R/analysis.R")
+# results <- run_analysis("data/input.csv")
+# ```
+#
+# ## Data
+# Description of data sources and formats
+#
+# ## Results
+# Summary of key findings
+#
+# ## Authors
+# Your name
+#
+# ## License
+# License information
+```
+
+---
+
+# Summary
+
+This guide covered critical advanced topics:
+
+## 1. data.table
+- High-performance alternative to dplyr
+- Syntax: DT[i, j, by]
+- Modify by reference
+- 10-100x faster for large datasets
+
+## 2. Regular Expressions
+- Pattern matching and text parsing
+- Essential for bioinformatics
+- Parsing FASTA, VCF, gene IDs
+- Validating formats
+
+## 3. tidymodels
+- Modern ML framework
+- Modular and flexible
+- Complete workflows
+- Hyperparameter tuning
+
+## 4. Databases
+- SQLite for local data
+- PostgreSQL for production
+- dplyr interface (dbplyr)
+- Handle data larger than memory
+
+## 5. Common Pitfalls
+- Floating point comparison
+- Growing objects in loops
+- NA handling
+- Factor vs character
+- Debugging techniques
+
+## 6. Best Practices
+- Project organization
+- Code style
+- Function design
+- Error handling
+- Testing
+- Documentation
+
+# Key Takeaways
+
+1. **Choose the right tool**: data.table for big data, dplyr for readability
+2. **Master regex**: Essential for text/sequence processing
+3. **Use databases**: For data that doesn't fit in memory
+4. **Write defensive code**: Validate inputs, handle errors
+5. **Test everything**: Unit tests prevent bugs
+6. **Document well**: Future you will thank you
+
+# Next Steps
+
+- Practice with real datasets
+- Build complete pipelines
+- Contribute to open source
+- Share your knowledge
+
+# References
+
+- [data.table documentation](https://rdatatable.gitlab.io/data.table/)
+- [Regular Expressions in R](https://stringr.tidyverse.org/articles/regular-expressions.html)
+- [tidymodels](https://www.tidymodels.org/)
+- [DBI documentation](https://dbi.r-dbi.org/)
+- [R Packages](https://r-pkgs.org/)

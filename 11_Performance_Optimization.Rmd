@@ -1,0 +1,775 @@
+---
+title: "Performance Optimization in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Profiling R Code
+
+## Why Profile?
+
+- Identify bottlenecks
+- Measure actual performance (not guesses)
+- Guide optimization efforts
+
+## system.time()
+
+```{r}
+# Basic timing
+system.time({
+  x <- rnorm(1e6)
+  y <- x^2
+})
+
+# User time: CPU time
+# System time: OS operations
+# Elapsed time: Wall clock time
+```
+
+## microbenchmark
+
+```{r}
+library(microbenchmark)
+
+# Compare methods
+microbenchmark(
+  loop = {
+    result <- numeric(1000)
+    for (i in 1:1000) result[i] <- i^2
+  },
+  vectorized = {
+    result <- (1:1000)^2
+  },
+  times = 100
+)
+
+# With different units
+microbenchmark(
+  sqrt(1:1000),
+  (1:1000)^0.5,
+  unit = "us"
+)
+```
+
+## bench
+
+```{r}
+library(bench)
+
+# Comprehensive benchmarking
+results <- mark(
+  loop = {
+    result <- numeric(1000)
+    for (i in 1:1000) result[i] <- i^2
+  },
+  vectorized = (1:1000)^2,
+  check = FALSE  # Don't check if results are identical
+)
+
+results
+plot(results)
+```
+
+## profvis
+
+```{r eval=FALSE}
+library(profvis)
+
+# Visual profiling
+profvis({
+  # Data generation
+  n <- 1e5
+  x <- rnorm(n)
+  y <- rnorm(n)
+
+  # Slow operations
+  z <- numeric(n)
+  for (i in 1:n) {
+    z[i] <- x[i] + y[i]
+  }
+
+  # Analysis
+  lm(z ~ x + y)
+})
+```
+
+## Rprof
+
+```{r eval=FALSE}
+# Low-level profiling
+Rprof("profile.out")
+
+# Code to profile
+for (i in 1:1000) {
+  x <- rnorm(100)
+  mean(x)
+}
+
+Rprof(NULL)
+
+# Analyze
+summaryRprof("profile.out")
+```
+
+# 2. Vectorization
+
+## Avoid Loops
+
+```{r}
+# Bad: Loop
+loop_version <- function(n) {
+  result <- numeric(n)
+  for (i in 1:n) {
+    result[i] <- sqrt(i)
+  }
+  result
+}
+
+# Good: Vectorized
+vectorized_version <- function(n) {
+  sqrt(1:n)
+}
+
+microbenchmark(
+  loop_version(1000),
+  vectorized_version(1000),
+  times = 100
+)
+```
+
+## Vectorized Functions
+
+```{r}
+# Arithmetic operations
+x <- 1:1000
+y <- 1:1000
+
+# All vectorized
+x + y
+x * y
+x / y
+x^y
+
+# Comparison operators
+x > 500
+x == y
+
+# Logical operations
+(x > 500) & (y < 600)
+
+# Math functions
+sqrt(x)
+log(x)
+exp(x)
+```
+
+## Row/Column Operations
+
+```{r}
+mat <- matrix(rnorm(10000), nrow = 100)
+
+# rowSums, colSums (much faster than apply)
+microbenchmark(
+  rowSums = rowSums(mat),
+  apply = apply(mat, 1, sum),
+  times = 100
+)
+
+# Other optimized functions
+rowMeans(mat)
+colMeans(mat)
+rowSums(mat)
+colSums(mat)
+```
+
+## ifelse vs if/else
+
+```{r}
+x <- rnorm(1000)
+
+# Vectorized ifelse
+result1 <- ifelse(x > 0, "positive", "negative")
+
+# For single values, if/else is faster
+value <- 5
+result2 <- if (value > 0) "positive" else "negative"
+
+# case_when for complex conditions
+library(dplyr)
+result3 <- case_when(
+  x > 1 ~ "high",
+  x > 0 ~ "medium",
+  TRUE ~ "low"
+)
+```
+
+# 3. Memory Management
+
+## Object Size
+
+```{r}
+# Check object size
+x <- rnorm(1e6)
+object.size(x)
+format(object.size(x), units = "MB")
+
+# All objects
+sapply(ls(), function(obj) {
+  format(object.size(get(obj)), units = "MB")
+})
+```
+
+## Memory Profiling
+
+```{r eval=FALSE}
+library(profmem)
+
+# Profile memory
+profmem({
+  x <- numeric(1e6)
+  y <- x * 2
+  z <- data.frame(x, y)
+})
+```
+
+## Avoid Copies
+
+```{r}
+# Bad: Creates multiple copies
+slow_function <- function(df) {
+  df$new_col1 <- df$x + 1
+  df$new_col2 <- df$y + 1
+  df$new_col3 <- df$z + 1
+  df
+}
+
+# Better: All at once
+fast_function <- function(df) {
+  df$new_col1 <- df$x + 1
+  df$new_col2 <- df$y + 1
+  df$new_col3 <- df$z + 1
+  df
+}
+
+# Best: data.table (modify in place)
+library(data.table)
+dt_function <- function(dt) {
+  dt[, `:=`(
+    new_col1 = x + 1,
+    new_col2 = y + 1,
+    new_col3 = z + 1
+  )]
+}
+```
+
+## Pre-allocate Vectors
+
+```{r}
+# Bad: Growing vector
+slow <- function(n) {
+  result <- NULL
+  for (i in 1:n) {
+    result <- c(result, i^2)
+  }
+  result
+}
+
+# Good: Pre-allocated
+fast <- function(n) {
+  result <- numeric(n)
+  for (i in 1:n) {
+    result[i] <- i^2
+  }
+  result
+}
+
+microbenchmark(
+  slow(1000),
+  fast(1000),
+  times = 10
+)
+```
+
+## Garbage Collection
+
+```{r eval=FALSE}
+# Manual garbage collection
+gc()
+
+# Check memory usage
+gc(verbose = TRUE)
+
+# Disable GC during critical operations
+gcold <- gcinfo(TRUE)
+# ... operations ...
+gcinfo(gcold)
+```
+
+# 4. Efficient Data Structures
+
+## data.table
+
+```{r}
+library(data.table)
+library(dplyr)
+
+# Create large dataset
+n <- 1e6
+df <- data.frame(
+  id = 1:n,
+  group = sample(letters[1:5], n, replace = TRUE),
+  value = rnorm(n)
+)
+dt <- as.data.table(df)
+
+# Compare performance
+microbenchmark(
+  dplyr = df %>% group_by(group) %>% summarise(mean = mean(value)),
+  datatable = dt[, .(mean = mean(value)), by = group],
+  times = 10
+)
+```
+
+## Matrix vs Data Frame
+
+```{r}
+# For numeric data, matrices are faster
+n <- 1000
+df <- data.frame(matrix(rnorm(n * 100), ncol = 100))
+mat <- as.matrix(df)
+
+microbenchmark(
+  df_colMeans = colMeans(df),
+  mat_colMeans = colMeans(mat),
+  times = 100
+)
+```
+
+## Lists vs Vectors
+
+```{r}
+# Vectors for homogeneous data
+v <- 1:1000
+
+# Lists for heterogeneous data
+l <- as.list(1:1000)
+
+# Vectors are faster
+microbenchmark(
+  vector = sum(v),
+  list = sum(unlist(l)),
+  times = 100
+)
+```
+
+# 5. Rcpp - C++ Integration
+
+## Basic Rcpp
+
+```{r}
+library(Rcpp)
+
+# Simple C++ function
+cppFunction('
+  int add_cpp(int x, int y) {
+    return x + y;
+  }
+')
+
+add_cpp(5, 10)
+
+# Rcpp vs R loop
+cppFunction('
+  NumericVector cumsum_cpp(NumericVector x) {
+    int n = x.size();
+    NumericVector result(n);
+    result[0] = x[0];
+    for (int i = 1; i < n; i++) {
+      result[i] = result[i-1] + x[i];
+    }
+    return result;
+  }
+')
+
+x <- rnorm(10000)
+microbenchmark(
+  R = cumsum(x),
+  Rcpp = cumsum_cpp(x),
+  times = 100
+)
+```
+
+## Rcpp with RcppArmadillo
+
+```{r eval=FALSE}
+library(RcppArmadillo)
+
+# Matrix operations
+src <- '
+  // [[Rcpp::depends(RcppArmadillo)]]
+  #include <RcppArmadillo.h>
+
+  // [[Rcpp::export]]
+  arma::mat multiply_arma(arma::mat A, arma::mat B) {
+    return A * B;
+  }
+'
+
+sourceCpp(code = src)
+
+A <- matrix(rnorm(100), 10, 10)
+B <- matrix(rnorm(100), 10, 10)
+
+microbenchmark(
+  R = A %*% B,
+  Arma = multiply_arma(A, B),
+  times = 100
+)
+```
+
+## When to Use Rcpp
+
+Use Rcpp when:
+- Loops that can't be vectorized
+- Recursive functions
+- Need to call C/C++ libraries
+- Working with complex data structures
+
+Don't use Rcpp for:
+- Already vectorized operations
+- Simple arithmetic
+- When R is fast enough
+
+# 6. Parallel Computing
+
+## parallel Package
+
+```{r}
+library(parallel)
+
+# Detect cores
+num_cores <- detectCores() - 1  # Leave one free
+
+# Parallel lapply
+x <- 1:1000
+result <- mclapply(x, function(i) {
+  Sys.sleep(0.01)
+  i^2
+}, mc.cores = num_cores)
+
+# Parallel for Windows
+cl <- makeCluster(num_cores)
+result <- parLapply(cl, x, function(i) i^2)
+stopCluster(cl)
+```
+
+## foreach
+
+```{r}
+library(foreach)
+library(doParallel)
+
+# Register parallel backend
+registerDoParallel(cores = num_cores)
+
+# Parallel foreach
+result <- foreach(i = 1:1000, .combine = c) %dopar% {
+  i^2
+}
+
+# Stop cluster
+stopImplicitCluster()
+```
+
+## future
+
+```{r}
+library(future)
+library(furrr)
+
+# Set plan
+plan(multisession, workers = num_cores)
+
+# Parallel map
+result <- future_map(1:1000, ~ .^2)
+
+# Reset to sequential
+plan(sequential)
+```
+
+# 7. Database Operations
+
+## Use Databases for Large Data
+
+```{r eval=FALSE}
+library(DBI)
+library(RSQLite)
+
+# Connect to database
+con <- dbConnect(SQLite(), "large_data.db")
+
+# Write data in chunks
+for (chunk in data_chunks) {
+  dbWriteTable(con, "data", chunk, append = TRUE)
+}
+
+# Query only what you need
+result <- dbGetQuery(con, "
+  SELECT *
+  FROM data
+  WHERE value > 100
+  LIMIT 1000
+")
+
+# Use indexes
+dbExecute(con, "CREATE INDEX idx_value ON data(value)")
+
+dbDisconnect(con)
+```
+
+## dbplyr
+
+```{r eval=FALSE}
+library(dplyr)
+library(dbplyr)
+
+# Connect
+con <- DBI::dbConnect(RSQLite::SQLite(), "data.db")
+data_tbl <- tbl(con, "data")
+
+# Use dplyr syntax (translated to SQL)
+result <- data_tbl %>%
+  filter(value > 100) %>%
+  group_by(group) %>%
+  summarise(mean_value = mean(value)) %>%
+  collect()  # Execute and bring to R
+```
+
+# 8. Caching and Memoization
+
+## memoise Package
+
+```{r}
+library(memoise)
+
+# Slow function
+slow_function <- function(n) {
+  Sys.sleep(2)
+  n^2
+}
+
+# Memoized version
+fast_function <- memoise(slow_function)
+
+# First call is slow
+system.time(fast_function(10))
+
+# Second call is instant
+system.time(fast_function(10))
+
+# Clear cache
+forget(fast_function)
+```
+
+## knitr Caching
+
+````{r eval=FALSE}
+```{r cache=TRUE}
+# This chunk will be cached
+expensive_computation <- function() {
+  Sys.sleep(10)
+  rnorm(1e6)
+}
+result <- expensive_computation()
+```
+````
+
+# 9. Code Optimization Strategies
+
+## General Principles
+
+```{r eval=FALSE}
+# 1. Use built-in functions
+mean(x)  # vs manual calculation
+
+# 2. Vectorize
+x + y  # vs loop
+
+# 3. Pre-allocate
+result <- numeric(n)  # vs growing vector
+
+# 4. Use appropriate data structures
+matrix for numeric data  # vs data.frame
+
+# 5. Avoid unnecessary copies
+modify in place with data.table
+
+# 6. Use specialized packages
+data.table, Rcpp
+
+# 7. Parallelize when appropriate
+mclapply, foreach
+
+# 8. Cache expensive computations
+memoise, knitr cache
+```
+
+## Specific Optimizations
+
+```{r}
+# Use which.min/which.max
+x <- rnorm(1e6)
+microbenchmark(
+  which = which.min(x),
+  manual = which(x == min(x))[1],
+  times = 100
+)
+
+# Use anyNA instead of any(is.na())
+x <- rnorm(1e6)
+microbenchmark(
+  anyNA = anyNA(x),
+  any_is.na = any(is.na(x)),
+  times = 100
+)
+
+# Use && and || for scalars (short-circuit)
+# Use & and | for vectors
+
+# %in% for membership testing
+x <- sample(1:1000, 100)
+lookup <- 1:500
+microbenchmark(
+  match = x %in% lookup,
+  sapply = sapply(x, function(i) i %in% lookup),
+  times = 100
+)
+```
+
+# 10. Best Practices
+
+## Optimization Workflow
+
+```{r eval=FALSE}
+# 1. Make it work
+# Write clear, correct code first
+
+# 2. Make it right
+# Ensure correctness with tests
+
+# 3. Profile
+# Find actual bottlenecks
+profvis({your_code()})
+
+# 4. Optimize bottlenecks
+# Focus on slow parts only
+
+# 5. Verify
+# Ensure still correct
+testthat::test_that("optimized version works", {
+  expect_equal(slow_version(), fast_version())
+})
+
+# 6. Measure
+# Confirm improvement
+microbenchmark(
+  slow_version(),
+  fast_version()
+)
+```
+
+## When to Optimize
+
+Optimize when:
+- Code is too slow for practical use
+- Profiling shows clear bottleneck
+- You have correct tests in place
+
+Don't optimize:
+- Prematurely (before profiling)
+- Code that runs rarely
+- At the cost of readability (unless necessary)
+
+## Memory vs Speed Trade-offs
+
+```{r eval=FALSE}
+# More memory, faster
+cache_results <- TRUE
+
+# Less memory, slower
+process_in_chunks <- TRUE
+
+# Balance based on constraints
+```
+
+# Summary
+
+This document covered performance optimization:
+
+**Profiling**:
+- system.time, microbenchmark, bench
+- profvis for visual profiling
+- Identify bottlenecks before optimizing
+
+**Vectorization**:
+- Avoid loops when possible
+- Use built-in vectorized functions
+- rowSums/colSums faster than apply
+
+**Memory**:
+- Pre-allocate vectors
+- Avoid unnecessary copies
+- Use appropriate data structures
+- Monitor memory usage
+
+**Rcpp**:
+- C++ integration for speed
+- Use for unavoidable loops
+- Matrix operations with RcppArmadillo
+
+**Parallel Computing**:
+- parallel, foreach, future packages
+- Utilize multiple cores
+- For embarrassingly parallel tasks
+
+**Data Structures**:
+- data.table for large datasets
+- Matrices for numeric data
+- Databases for huge datasets
+
+**Caching**:
+- memoise for expensive functions
+- knitr caching for reports
+
+**Best Practices**:
+- Profile first
+- Optimize bottlenecks only
+- Maintain correctness
+- Document trade-offs
+
+**Golden Rules**:
+1. Correct first, fast second
+2. Profile before optimizing
+3. Vectorize when possible
+4. Use appropriate data structures
+5. Consider memory constraints
+
+**Next Steps**: Proceed to Specialized Bioinformatics for pathway analysis, network analysis, and more.
+
+# References
+
+- [Efficient R Programming](https://csgillespie.github.io/efficientR/)
+- [Advanced R - Performance](https://adv-r.hadley.nz/perf-improve.html)
+- [Rcpp for Seamless R and C++ Integration](http://www.rcpp.org/)
+- [data.table documentation](https://rdatatable.gitlab.io/data.table/)

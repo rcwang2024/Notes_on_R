@@ -1,0 +1,677 @@
+---
+title: "R Fundamentals"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Installation and Setup
+
+## Installing R
+
+R can be downloaded from [CRAN](https://cran.r-project.org/). Choose the appropriate version for your operating system:
+
+- **Windows**: Download the `.exe` installer
+- **macOS**: Download the `.pkg` installer
+- **Linux**: Use package manager or compile from source
+
+## Installing RStudio
+
+RStudio is the most popular IDE for R. Download from [RStudio](https://www.rstudio.com/products/rstudio/download/).
+
+## RStudio Interface
+
+The RStudio interface consists of four main panes:
+
+1. **Source Editor**: Write and edit R scripts
+2. **Console**: Execute R commands interactively
+3. **Environment/History**: View objects and command history
+4. **Files/Plots/Packages/Help**: Navigate files, view plots, manage packages
+
+# 2. Basic Syntax
+
+## Comments
+
+```{r}
+# This is a single-line comment
+
+# R does not have multi-line comments
+# Use multiple single-line comments instead
+```
+
+## Basic Arithmetic Operations
+
+```{r}
+# Addition
+5 + 3
+
+# Subtraction
+10 - 4
+
+# Multiplication
+6 * 7
+
+# Division
+20 / 4
+
+# Exponentiation
+2^3
+
+# Modulo (remainder)
+17 %% 5
+
+# Integer division
+17 %/% 5
+```
+
+## Comparison Operators
+
+```{r}
+# Equal to
+5 == 5
+
+# Not equal to
+5 != 3
+
+# Greater than
+10 > 5
+
+# Less than
+3 < 7
+
+# Greater than or equal to
+5 >= 5
+
+# Less than or equal to
+4 <= 6
+```
+
+## Logical Operators
+
+```{r}
+# AND
+TRUE & FALSE
+
+# OR
+TRUE | FALSE
+
+# NOT
+!TRUE
+
+# Element-wise AND
+c(TRUE, FALSE, TRUE) & c(TRUE, TRUE, FALSE)
+
+# Element-wise OR
+c(TRUE, FALSE, TRUE) | c(TRUE, TRUE, FALSE)
+
+# Short-circuit AND (only evaluates second if first is TRUE)
+TRUE && FALSE
+
+# Short-circuit OR (only evaluates second if first is FALSE)
+TRUE || FALSE
+```
+
+# 3. Variables and Assignment
+
+## Variable Assignment
+
+```{r}
+# Using <- (preferred in R)
+x <- 10
+
+# Using = (also works, but <- is conventional)
+y = 20
+
+# Using -> (right assignment, less common)
+30 -> z
+
+# Print values
+x
+y
+z
+```
+
+## Variable Naming Rules
+
+```{r}
+# Valid variable names
+my_variable <- 5
+myVariable <- 10
+my.variable <- 15
+MyVariable2 <- 20
+
+# Invalid variable names (will cause errors)
+# 2myVariable <- 25  # Cannot start with a number
+# my-variable <- 30  # Hyphens not allowed
+# _myVariable <- 35  # Cannot start with underscore
+```
+
+## Variable Types
+
+R automatically determines variable types:
+
+```{r}
+# Numeric (double)
+num_var <- 42.5
+class(num_var)
+
+# Integer (must specify with L)
+int_var <- 42L
+class(int_var)
+
+# Character
+char_var <- "Hello, R!"
+class(char_var)
+
+# Logical
+logical_var <- TRUE
+class(logical_var)
+```
+
+# 4. Control Structures
+
+## If-Else Statements
+
+```{r}
+# Simple if statement
+x <- 10
+if (x > 5) {
+  print("x is greater than 5")
+}
+
+# If-else statement
+x <- 3
+if (x > 5) {
+  print("x is greater than 5")
+} else {
+  print("x is less than or equal to 5")
+}
+
+# If-else if-else chain
+score <- 75
+if (score >= 90) {
+  grade <- "A"
+} else if (score >= 80) {
+  grade <- "B"
+} else if (score >= 70) {
+  grade <- "C"
+} else if (score >= 60) {
+  grade <- "D"
+} else {
+  grade <- "F"
+}
+print(paste("Grade:", grade))
+
+# Vectorized ifelse (more efficient)
+scores <- c(95, 82, 68, 55, 91)
+grades <- ifelse(scores >= 90, "A",
+          ifelse(scores >= 80, "B",
+          ifelse(scores >= 70, "C",
+          ifelse(scores >= 60, "D", "F"))))
+grades
+```
+
+## Switch Statement
+
+```{r}
+# Switch with numeric index
+x <- 2
+result <- switch(x,
+  "first",
+  "second",
+  "third",
+  "default"
+)
+result
+
+# Switch with character matching
+day <- "Monday"
+activity <- switch(day,
+  "Monday" = "Start of work week",
+  "Friday" = "End of work week",
+  "Saturday" = "Weekend!",
+  "Sunday" = "Weekend!",
+  "Midweek"
+)
+activity
+```
+
+## For Loops
+
+```{r}
+# Simple for loop
+for (i in 1:5) {
+  print(i)
+}
+
+# Loop over vector
+fruits <- c("apple", "banana", "cherry")
+for (fruit in fruits) {
+  print(paste("I like", fruit))
+}
+
+# Nested loops
+for (i in 1:3) {
+  for (j in 1:3) {
+    print(paste(i, "*", j, "=", i*j))
+  }
+}
+
+# Using seq_along (best practice for vectors)
+for (i in seq_along(fruits)) {
+  print(paste(i, ":", fruits[i]))
+}
+```
+
+## While Loops
+
+```{r}
+# Simple while loop
+count <- 1
+while (count <= 5) {
+  print(count)
+  count <- count + 1
+}
+
+# While loop with break
+x <- 1
+while (TRUE) {
+  print(x)
+  x <- x + 1
+  if (x > 5) {
+    break
+  }
+}
+```
+
+## Repeat Loops
+
+```{r}
+# Repeat loop (infinite loop with break)
+x <- 1
+repeat {
+  print(x)
+  x <- x + 1
+  if (x > 5) {
+    break
+  }
+}
+```
+
+## Break and Next
+
+```{r}
+# Using break to exit loop early
+for (i in 1:10) {
+  if (i > 5) {
+    break
+  }
+  print(i)
+}
+
+# Using next to skip iteration
+for (i in 1:10) {
+  if (i %% 2 == 0) {
+    next  # Skip even numbers
+  }
+  print(i)
+}
+```
+
+# 5. Functions
+
+## Creating Basic Functions
+
+```{r}
+# Simple function
+square <- function(x) {
+  return(x^2)
+}
+square(5)
+
+# Function without explicit return (last expression is returned)
+cube <- function(x) {
+  x^3
+}
+cube(4)
+
+# Function with multiple arguments
+add <- function(a, b) {
+  a + b
+}
+add(3, 7)
+
+# Function with default arguments
+greet <- function(name, greeting = "Hello") {
+  paste(greeting, name, "!")
+}
+greet("Alice")
+greet("Bob", "Hi")
+```
+
+## Functions with Multiple Returns
+
+```{r}
+# Return multiple values using a list
+calculate_stats <- function(x) {
+  list(
+    mean = mean(x),
+    median = median(x),
+    sd = sd(x),
+    min = min(x),
+    max = max(x)
+  )
+}
+
+data <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10)
+stats <- calculate_stats(data)
+stats
+```
+
+## Variable Arguments
+
+```{r}
+# Using ... for variable number of arguments
+sum_all <- function(...) {
+  args <- list(...)
+  sum(unlist(args))
+}
+sum_all(1, 2, 3, 4, 5)
+
+# Combining ... with named arguments
+print_with_separator <- function(sep = "-", ...) {
+  args <- list(...)
+  paste(unlist(args), collapse = sep)
+}
+print_with_separator(" | ", "apple", "banana", "cherry")
+```
+
+## Anonymous Functions
+
+```{r}
+# Traditional anonymous function
+sapply(1:5, function(x) x^2)
+
+# R 4.1+ shorthand syntax
+sapply(1:5, \(x) x^2)
+```
+
+## Function Scope
+
+```{r}
+# Local vs global scope
+x <- 10  # Global variable
+
+test_scope <- function() {
+  x <- 5  # Local variable
+  print(paste("Inside function:", x))
+}
+
+test_scope()
+print(paste("Outside function:", x))
+
+# Accessing global variable with <<-
+counter <- 0
+increment <- function() {
+  counter <<- counter + 1
+  counter
+}
+increment()
+increment()
+counter
+```
+
+# 6. Package Management
+
+## Installing Packages
+
+```{r eval=FALSE}
+# Install from CRAN
+install.packages("ggplot2")
+
+# Install multiple packages
+install.packages(c("dplyr", "tidyr", "readr"))
+
+# Install from Bioconductor
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install("DESeq2")
+
+# Install from GitHub
+# install.packages("devtools")
+devtools::install_github("username/packagename")
+```
+
+## Loading Packages
+
+```{r eval=FALSE}
+# Load package
+library(ggplot2)
+
+# Load package without startup messages
+suppressPackageStartupMessages(library(dplyr))
+
+# Require package (returns FALSE if not available)
+if (require("ggplot2")) {
+  print("Package loaded successfully")
+} else {
+  install.packages("ggplot2")
+  library(ggplot2)
+}
+
+# Use function without loading entire package
+dplyr::filter(mtcars, mpg > 20)
+```
+
+## Managing Packages
+
+```{r eval=FALSE}
+# List installed packages
+installed.packages()
+
+# Update packages
+update.packages()
+
+# Update specific package
+update.packages("ggplot2")
+
+# Remove package
+remove.packages("packagename")
+
+# Check package version
+packageVersion("ggplot2")
+
+# View package help
+help(package = "ggplot2")
+```
+
+## Common Essential Packages
+
+```{r eval=FALSE}
+# Tidyverse (collection of packages)
+install.packages("tidyverse")
+# Includes: ggplot2, dplyr, tidyr, readr, purrr, tibble, stringr, forcats
+
+# Data manipulation
+install.packages("data.table")
+
+# Bioinformatics
+BiocManager::install(c("Biostrings", "GenomicRanges", "DESeq2"))
+
+# Statistical analysis
+install.packages(c("lme4", "survival", "MASS"))
+
+# Machine learning
+install.packages(c("caret", "randomForest", "xgboost"))
+
+# Visualization
+install.packages(c("plotly", "pheatmap", "ComplexHeatmap"))
+```
+
+# 7. Getting Help
+
+## Help Functions
+
+```{r eval=FALSE}
+# Get help for a function
+help(mean)
+?mean
+
+# Search for help
+help.search("linear model")
+??lm
+
+# Get examples
+example(mean)
+
+# View function arguments
+args(lm)
+
+# View vignettes
+vignette()
+vignette("dplyr")
+
+# Access package documentation
+help(package = "ggplot2")
+```
+
+## Useful R Functions for Exploration
+
+```{r}
+# Get structure of object
+str(mtcars)
+
+# Summary statistics
+summary(mtcars)
+
+# View first few rows
+head(mtcars)
+
+# View last few rows
+tail(mtcars)
+
+# Dimensions
+dim(mtcars)
+
+# Column names
+names(mtcars)
+
+# Row names
+rownames(mtcars)
+
+# Check class/type
+class(mtcars)
+typeof(mtcars$mpg)
+```
+
+# 8. Working Directory
+
+## Managing Working Directory
+
+```{r eval=FALSE}
+# Get current working directory
+getwd()
+
+# Set working directory
+setwd("/path/to/directory")
+
+# List files in current directory
+list.files()
+
+# List files with pattern
+list.files(pattern = "\\.csv$")
+
+# Check if file exists
+file.exists("data.csv")
+
+# Create directory
+dir.create("new_folder")
+```
+
+# 9. Best Practices
+
+## Code Style
+
+```{r eval=FALSE}
+# Use meaningful variable names
+patient_age <- 45  # Good
+x <- 45  # Bad
+
+# Use <- for assignment (not =)
+result <- compute_value()  # Good
+result = compute_value()  # Works but not conventional
+
+# Use spacing for readability
+mean(c(1, 2, 3, 4, 5))  # Good
+mean(c(1,2,3,4,5))  # Less readable
+
+# Indent code blocks
+if (condition) {
+  do_something()
+  do_another_thing()
+}
+
+# Comment your code
+# Calculate mean expression across samples
+mean_expression <- rowMeans(expression_matrix)
+```
+
+## Common Pitfalls
+
+```{r}
+# Be careful with == for floating point
+0.1 + 0.2 == 0.3  # FALSE due to floating point precision
+all.equal(0.1 + 0.2, 0.3)  # TRUE (with tolerance)
+
+# Use identical() for exact comparison
+identical(0.1 + 0.2, 0.3)  # FALSE
+
+# Recycling in vectors
+c(1, 2, 3, 4) + c(1, 2)  # Second vector is recycled: 1,2,1,2
+
+# NA vs NULL
+x <- c(1, 2, NA, 4)
+y <- c(1, 2, NULL, 4)
+length(x)  # 4
+length(y)  # 3 (NULL is ignored)
+```
+
+# 10. Session Information
+
+Always include session information in your reports for reproducibility:
+
+```{r}
+sessionInfo()
+```
+
+# Summary
+
+This document covered R fundamentals including:
+
+- Installation and setup
+- Basic syntax and operators
+- Variables and data types
+- Control structures (if/else, loops)
+- Functions and scope
+- Package management
+- Getting help
+- Best practices
+
+**Next Steps**: Proceed to Data Structures to learn about vectors, lists, data frames, and more complex R objects.
+
+# References
+
+- [R for Data Science](https://r4ds.had.co.nz/)
+- [Advanced R](https://adv-r.hadley.nz/)
+- [R Documentation](https://www.r-project.org/other-docs.html)
+- [CRAN Task Views](https://cran.r-project.org/web/views/)

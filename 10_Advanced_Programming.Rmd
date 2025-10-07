@@ -1,0 +1,875 @@
+---
+title: "Advanced Programming in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Functional Programming
+
+## apply Family
+
+### apply()
+
+```{r}
+# Apply function to matrix rows or columns
+mat <- matrix(1:12, nrow = 3)
+
+# Apply to rows (MARGIN = 1)
+apply(mat, 1, sum)
+
+# Apply to columns (MARGIN = 2)
+apply(mat, 2, mean)
+
+# Custom function
+apply(mat, 1, function(x) max(x) - min(x))
+```
+
+### lapply() and sapply()
+
+```{r}
+# lapply returns a list
+my_list <- list(a = 1:5, b = 6:10, c = 11:15)
+lapply(my_list, mean)
+
+# sapply simplifies to vector/matrix
+sapply(my_list, mean)
+
+# With custom function
+sapply(my_list, function(x) sum(x^2))
+
+# On data frames
+lapply(mtcars[, 1:3], mean)
+sapply(mtcars[, 1:3], sd)
+```
+
+### tapply()
+
+```{r}
+# Apply function to groups
+tapply(mtcars$mpg, mtcars$cyl, mean)
+tapply(mtcars$hp, list(mtcars$cyl, mtcars$gear), mean)
+```
+
+### mapply()
+
+```{r}
+# Multivariate apply
+mapply(function(x, y) x + y, 1:5, 6:10)
+
+# Multiple arguments
+mapply(rep, 1:4, 4:1)
+
+# With data frames
+mapply(function(x, y) cor(x, y),
+       mtcars[c("mpg", "wt")],
+       mtcars[c("hp", "disp")])
+```
+
+### vapply()
+
+```{r}
+# Like sapply but with pre-specified output type (safer)
+vapply(mtcars[1:3], mean, numeric(1))
+
+# Specifies exact output format
+vapply(mtcars[1:3], function(x) c(min(x), max(x)), numeric(2))
+```
+
+## purrr Package (Functional Programming)
+
+```{r}
+library(purrr)
+
+# map() - always returns list
+map(mtcars[1:3], mean)
+
+# map_dbl() - returns numeric vector
+map_dbl(mtcars[1:3], mean)
+
+# map_chr() - returns character vector
+map_chr(iris[1:4], class)
+
+# map_df() - returns data frame
+map_df(mtcars[1:3], ~ data.frame(mean = mean(.), sd = sd(.)))
+
+# map2() - iterate over two inputs
+map2_dbl(mtcars$mpg, mtcars$wt, ~ .x / .y)
+
+# pmap() - iterate over multiple inputs
+pmap_dbl(list(mtcars$mpg, mtcars$wt, mtcars$hp),
+         function(x, y, z) x + y + z)
+
+# Anonymous function shortcuts
+map_dbl(mtcars[1:3], ~ mean(.) * 2)
+
+# Keep, discard, compact
+keep(mtcars, is.numeric)
+discard(mtcars, is.numeric)
+compact(list(1, NULL, 3, NULL, 5))
+
+# Reduce
+reduce(1:10, `+`)
+reduce(list(a = 1:5, b = 3:7, c = 5:9), intersect)
+
+# Safely handle errors
+safe_log <- safely(log)
+safe_log(10)
+safe_log("a")
+
+# Possibly for default values
+possible_log <- possibly(log, otherwise = NA)
+possible_log("a")
+
+# Quietly capture messages/warnings
+quiet_log <- quietly(log)
+quiet_log(-1)
+```
+
+## Anonymous Functions
+
+```{r}
+# Traditional
+sapply(1:5, function(x) x^2)
+
+# R 4.1+ shorthand
+sapply(1:5, \(x) x^2)
+
+# purrr style
+map_dbl(1:5, ~ .^2)
+```
+
+## Higher-Order Functions
+
+```{r}
+# Functions that return functions
+make_power <- function(n) {
+  function(x) x^n
+}
+
+square <- make_power(2)
+cube <- make_power(3)
+
+square(5)
+cube(5)
+
+# Function composition
+library(purrr)
+compose(sqrt, mean, sum)(1:10)
+```
+
+## Closures
+
+```{r}
+# Function that captures environment
+make_counter <- function() {
+  count <- 0
+  function() {
+    count <<- count + 1
+    count
+  }
+}
+
+counter1 <- make_counter()
+counter1()  # 1
+counter1()  # 2
+
+counter2 <- make_counter()
+counter2()  # 1
+```
+
+# 2. Object-Oriented Programming
+
+## S3 Objects
+
+```{r}
+# Create S3 object
+person <- list(
+  name = "Alice",
+  age = 30
+)
+class(person) <- "person"
+
+# Create print method
+print.person <- function(x, ...) {
+  cat("Person:", x$name, "\n")
+  cat("Age:", x$age, "\n")
+}
+
+print(person)
+
+# Generic function
+summary.person <- function(object, ...) {
+  cat("Summary of person:", object$name, "\n")
+}
+
+summary(person)
+
+# Constructor function
+new_person <- function(name, age) {
+  structure(
+    list(name = name, age = age),
+    class = "person"
+  )
+}
+
+alice <- new_person("Alice", 30)
+```
+
+## S4 Objects
+
+```{r}
+# Define S4 class
+setClass("Person",
+         slots = c(
+           name = "character",
+           age = "numeric"
+         ))
+
+# Create instance
+alice <- new("Person", name = "Alice", age = 30)
+
+# Access slots
+alice@name
+alice@age
+
+# Generic function
+setGeneric("getName", function(object) standardGeneric("getName"))
+
+# Method
+setMethod("getName", "Person", function(object) object@name)
+
+getName(alice)
+
+# Validator
+setValidity("Person", function(object) {
+  if (object@age < 0) {
+    return("Age must be positive")
+  }
+  TRUE
+})
+
+# Constructor with validation
+Person <- function(name, age) {
+  new("Person", name = name, age = age)
+}
+```
+
+## R6 Objects
+
+```{r}
+library(R6)
+
+# Define R6 class
+Person <- R6Class("Person",
+  public = list(
+    name = NULL,
+    age = NULL,
+
+    initialize = function(name, age) {
+      self$name <- name
+      self$age <- age
+    },
+
+    print = function() {
+      cat("Person:", self$name, "\n")
+      cat("Age:", self$age, "\n")
+    },
+
+    birthday = function() {
+      self$age <- self$age + 1
+      invisible(self)
+    }
+  ),
+
+  private = list(
+    secret = "private data"
+  )
+)
+
+# Create instance
+alice <- Person$new("Alice", 30)
+alice$print()
+alice$birthday()
+alice$age
+
+# Inheritance
+Employee <- R6Class("Employee",
+  inherit = Person,
+  public = list(
+    company = NULL,
+
+    initialize = function(name, age, company) {
+      super$initialize(name, age)
+      self$company <- company
+    }
+  )
+)
+
+bob <- Employee$new("Bob", 25, "Acme Corp")
+```
+
+# 3. Environments and Scoping
+
+## Environment Basics
+
+```{r}
+# Current environment
+environment()
+
+# Global environment
+.GlobalEnv
+
+# Create new environment
+env <- new.env()
+
+# Assign to environment
+env$x <- 10
+env$y <- 20
+
+# List contents
+ls(env)
+
+# Get value
+get("x", envir = env)
+
+# Parent environment
+parent.env(env)
+
+# Environment chain
+search()
+```
+
+## Scoping Rules
+
+```{r}
+# Lexical scoping
+x <- 1
+
+f <- function() {
+  y <- 2
+  g <- function() {
+    z <- 3
+    c(x, y, z)
+  }
+  g()
+}
+
+f()  # Can access x (global), y (parent), z (local)
+
+# Dynamic scoping with environment
+x <- 1
+f <- function() {
+  y <- 2
+  environment()
+}
+env_f <- f()
+env_f$y
+```
+
+## Non-Standard Evaluation (NSE)
+
+```{r}
+# Capture expressions without evaluating
+expr <- quote(x + y)
+expr
+
+# Evaluate in environment
+x <- 5
+y <- 10
+eval(expr)
+
+# Substitute
+substitute(x + y)
+
+# With environment
+eval(quote(mean(x)), list(x = 1:10))
+
+# deparse and parse
+code <- deparse(expr)
+code
+parsed <- parse(text = code)
+eval(parsed)
+```
+
+# 4. Tidy Evaluation
+
+```{r}
+library(rlang)
+library(dplyr)
+
+# Enquo and !!
+my_summarise <- function(data, group_var, sum_var) {
+  group_var <- enquo(group_var)
+  sum_var <- enquo(sum_var)
+
+  data %>%
+    group_by(!!group_var) %>%
+    summarise(total = sum(!!sum_var))
+}
+
+my_summarise(mtcars, cyl, mpg)
+
+# Multiple variables with ...
+my_select <- function(data, ...) {
+  data %>% select(...)
+}
+
+my_select(mtcars, mpg, cyl, hp)
+
+# := for dynamic names
+my_mutate <- function(data, var, value) {
+  var <- ensym(var)
+  data %>% mutate(!!var := value)
+}
+
+my_mutate(mtcars, new_col, 10)
+
+# Curly-curly {{}}
+my_plot <- function(data, x, y) {
+  ggplot(data, aes({{x}}, {{y}})) +
+    geom_point()
+}
+
+library(ggplot2)
+my_plot(mtcars, wt, mpg)
+```
+
+# 5. Error Handling
+
+## tryCatch
+
+```{r}
+# Basic error handling
+result <- tryCatch(
+  {
+    log("not a number")
+  },
+  error = function(e) {
+    message("Error occurred: ", e$message)
+    NA
+  },
+  warning = function(w) {
+    message("Warning: ", w$message)
+  }
+)
+
+# With finally
+tryCatch(
+  {
+    x <- 10
+    y <- x / 2
+  },
+  error = function(e) NULL,
+  finally = {
+    message("Cleanup code")
+  }
+)
+
+# Multiple error types
+safe_divide <- function(x, y) {
+  tryCatch(
+    x / y,
+    error = function(e) {
+      if (grepl("non-numeric", e$message)) {
+        message("Input must be numeric")
+      } else {
+        message("Unknown error")
+      }
+      NA
+    }
+  )
+}
+```
+
+## withCallingHandlers
+
+```{r}
+# Handle without interrupting
+withCallingHandlers(
+  {
+    warning("First warning")
+    warning("Second warning")
+    message("Done")
+  },
+  warning = function(w) {
+    message("Caught warning: ", conditionMessage(w))
+    invokeRestart("muffleWarning")
+  }
+)
+```
+
+## purrr Error Handling
+
+```{r}
+library(purrr)
+
+# safely - returns list with result and error
+safe_log <- safely(log)
+safe_log(10)
+safe_log("a")
+
+# Use with map
+map(list(10, "a", 100), safe_log)
+
+# possibly - returns default on error
+possible_log <- possibly(log, otherwise = NA)
+map_dbl(list(10, "a", 100), possible_log)
+
+# quietly - captures output
+quiet_log <- quietly(log)
+quiet_log(-1)
+```
+
+# 6. Debugging
+
+## Debugging Tools
+
+```{r eval=FALSE}
+# Print debugging
+print(x)
+cat("Value of x:", x, "\n")
+
+# browser() - interactive debugging
+my_function <- function(x) {
+  y <- x * 2
+  browser()  # Execution stops here
+  z <- y + 1
+  z
+}
+
+# debug() - step through function
+debug(my_function)
+my_function(10)
+undebug(my_function)
+
+# debugonce() - debug only once
+debugonce(my_function)
+
+# trace() - insert code at specific points
+trace(mean, quote(print(x)))
+untrace(mean)
+
+# recover() - examine call stack on error
+options(error = recover)
+# ... run code that errors ...
+options(error = NULL)
+
+# traceback() - show call stack
+# After error occurs:
+traceback()
+```
+
+## Profiling
+
+```{r eval=FALSE}
+# Rprof - basic profiling
+Rprof("profile.out")
+# ... code to profile ...
+Rprof(NULL)
+summaryRprof("profile.out")
+
+# profvis - visual profiling
+library(profvis)
+profvis({
+  x <- rnorm(10000)
+  y <- x^2
+  z <- log(y + 1)
+})
+
+# microbenchmark - precise timing
+library(microbenchmark)
+microbenchmark(
+  method1 = sum(1:1000),
+  method2 = Reduce(`+`, 1:1000),
+  times = 100
+)
+
+# bench - comprehensive benchmarking
+library(bench)
+bench::mark(
+  sum(1:1000),
+  Reduce(`+`, 1:1000)
+)
+```
+
+# 7. Metaprogramming
+
+## Code as Data
+
+```{r}
+# Create expression
+expr <- quote(x + y)
+expr
+
+# Modify expression
+expr[[1]]  # Function
+expr[[2]]  # First argument
+expr[[3]]  # Second argument
+
+# Build expression
+call("+", quote(x), quote(y))
+
+# as.call and as.list
+expr_list <- as.list(expr)
+as.call(list(quote(mean), quote(x)))
+```
+
+## Computing on the Language
+
+```{r}
+# Walk expression tree
+library(lobstr)
+ast(f(x, y = g(z)))
+
+# Modify function calls
+substitute_call <- function(call, env = parent.frame()) {
+  if (is.call(call)) {
+    call[-1] <- lapply(call[-1], substitute_call, env)
+  }
+  call
+}
+
+# Unevaluated expressions
+expr(x + y)
+exprs(x = a + b, y = c + d)
+
+# Quasiquotation
+x <- 5
+expr(y + !!x)  # Unquote x
+
+# Unquote-splice
+values <- c(1, 2, 3)
+expr(sum(!!!values))
+```
+
+## Code Generation
+
+```{r}
+# Generate function
+make_function <- function(args, body, env = parent.frame()) {
+  args <- as.pairlist(args)
+  eval(call("function", args, body), env)
+}
+
+f <- make_function(alist(x = , y = ), quote(x + y))
+f(3, 4)
+
+# rlang::new_function
+library(rlang)
+new_function(
+  exprs(x = , y = ),
+  expr({x + y})
+)
+```
+
+# 8. Advanced Function Features
+
+## Function Arguments
+
+```{r}
+# Default arguments
+f <- function(x = 1, y = x * 2) {
+  x + y
+}
+
+# Missing arguments
+f <- function(x, y) {
+  if (missing(y)) {
+    y <- x * 2
+  }
+  x + y
+}
+
+# match.arg for restricted choices
+greet <- function(name, style = c("formal", "casual")) {
+  style <- match.arg(style)
+  switch(style,
+         formal = paste("Dear", name),
+         casual = paste("Hi", name))
+}
+
+greet("Alice", "formal")
+```
+
+## do.call
+
+```{r}
+# Call function with list of arguments
+args_list <- list(x = 1:10, na.rm = TRUE)
+do.call(mean, args_list)
+
+# Combine multiple data frames
+df_list <- list(
+  data.frame(x = 1:3),
+  data.frame(x = 4:6),
+  data.frame(x = 7:9)
+)
+do.call(rbind, df_list)
+```
+
+## Lazy Evaluation
+
+```{r}
+# Arguments evaluated only when needed
+f <- function(x, y) {
+  if (x > 0) {
+    x
+  } else {
+    y
+  }
+}
+
+f(5, stop("This won't be evaluated"))
+
+# Force evaluation
+f <- function(x) {
+  force(x)
+  function() x
+}
+```
+
+# 9. Parallel Programming
+
+## parallel Package
+
+```{r}
+library(parallel)
+
+# Detect cores
+detectCores()
+
+# parLapply (parallel lapply)
+cl <- makeCluster(4)
+result <- parLapply(cl, 1:10, function(x) x^2)
+stopCluster(cl)
+
+# mclapply (multicore, Unix/Mac only)
+mclapply(1:10, function(x) x^2, mc.cores = 4)
+
+# parSapply
+cl <- makeCluster(4)
+result <- parSapply(cl, 1:10, function(x) x^2)
+stopCluster(cl)
+
+# Export variables to cluster
+cl <- makeCluster(4)
+clusterExport(cl, "my_variable")
+clusterEvalQ(cl, library(dplyr))
+result <- parLapply(cl, 1:10, some_function)
+stopCluster(cl)
+```
+
+## foreach and doParallel
+
+```{r}
+library(foreach)
+library(doParallel)
+
+# Setup parallel backend
+registerDoParallel(cores = 4)
+
+# Parallel loop
+result <- foreach(i = 1:10, .combine = c) %dopar% {
+  i^2
+}
+
+# With packages
+result <- foreach(i = 1:10, .packages = "dplyr") %dopar% {
+  # Use dplyr functions
+}
+
+# Stop parallel backend
+stopImplicitCluster()
+```
+
+## future Package
+
+```{r}
+library(future)
+library(furrr)
+
+# Set plan
+plan(multisession, workers = 4)
+
+# Future map
+future_map_dbl(1:10, ~ .^2)
+
+# Explicit futures
+f <- future({
+  Sys.sleep(2)
+  42
+})
+value(f)
+```
+
+# Summary
+
+This document covered advanced R programming:
+
+**Functional Programming**:
+- apply family (apply, lapply, sapply, etc.)
+- purrr for functional programming
+- Higher-order functions and closures
+
+**Object-Oriented Programming**:
+- S3 (simple, flexible)
+- S4 (formal, type-safe)
+- R6 (reference semantics)
+
+**Environments and Scoping**:
+- Environment manipulation
+- Lexical vs dynamic scoping
+- Non-standard evaluation
+
+**Tidy Evaluation**:
+- enquo, !!, {{}}
+- Programming with dplyr/ggplot2
+
+**Error Handling**:
+- tryCatch, withCallingHandlers
+- purrr::safely, possibly, quietly
+
+**Debugging and Profiling**:
+- browser, debug, trace
+- profvis, microbenchmark
+
+**Metaprogramming**:
+- Computing on the language
+- Code generation
+- Quasiquotation
+
+**Advanced Features**:
+- Function arguments and evaluation
+- do.call
+- Lazy evaluation
+
+**Parallel Programming**:
+- parallel package
+- foreach/doParallel
+- future/furrr
+
+**Key Principles**:
+- Understand when to use each paradigm
+- Profile before optimizing
+- Handle errors gracefully
+- Use functional programming for clarity
+
+**Next Steps**: Proceed to Performance Optimization for vectorization, Rcpp, and memory management.
+
+# References
+
+- [Advanced R by Hadley Wickham](https://adv-r.hadley.nz/)
+- [Tidy Evaluation](https://tidyeval.tidyverse.org/)
+- [R6 Documentation](https://r6.r-lib.org/)
+- [purrr Documentation](https://purrr.tidyverse.org/)

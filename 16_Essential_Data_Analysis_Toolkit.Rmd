@@ -1,0 +1,2054 @@
+---
+title: "Essential Data Analysis Toolkit: dplyr, tidyr, ggplot2, and caret"
+author: "Comprehensive Guide with Practical Examples"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 4
+    code_folding: show
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, fig.width = 10, fig.height = 6)
+```
+
+# Introduction
+
+This document provides comprehensive coverage of the most essential R packages for data analysis:
+
+- **dplyr & tidyr**: Data manipulation and reshaping
+- **ggplot2**: Data visualization
+- **caret**: Machine learning workflows
+
+These form the core toolkit for data scientists and are used in nearly every analysis project.
+
+---
+
+# Part 1: Data Manipulation with dplyr and tidyr
+
+```{r}
+library(dplyr)
+library(tidyr)
+library(readr)
+```
+
+## 1.1 Core dplyr Functions
+
+### select() - Column Selection
+
+```{r}
+# Load example data
+data(mtcars)
+data(iris)
+
+# Select specific columns
+mtcars %>%
+  select(mpg, cyl, hp)
+
+# Select range of columns
+mtcars %>%
+  select(mpg:hp)
+
+# Select by position
+mtcars %>%
+  select(1:3)
+
+# Exclude columns
+mtcars %>%
+  select(-mpg, -cyl)
+
+# Select helpers
+iris %>%
+  select(starts_with("Sepal"))
+
+iris %>%
+  select(ends_with("Width"))
+
+iris %>%
+  select(contains("pal"))
+
+# Select by type
+iris %>%
+  select(where(is.numeric))
+
+iris %>%
+  select(where(is.factor))
+
+# Rename while selecting
+mtcars %>%
+  select(miles_per_gallon = mpg, cylinders = cyl)
+
+# Reorder columns
+mtcars %>%
+  select(hp, mpg, everything())
+```
+
+### filter() - Row Filtering
+
+```{r}
+# Single condition
+mtcars %>%
+  filter(mpg > 20)
+
+# Multiple conditions (AND)
+mtcars %>%
+  filter(mpg > 20, cyl == 6)
+
+mtcars %>%
+  filter(mpg > 20 & cyl == 6)
+
+# OR conditions
+mtcars %>%
+  filter(mpg > 25 | hp > 200)
+
+# Complex conditions
+mtcars %>%
+  filter((mpg > 20 & cyl == 4) | (mpg > 15 & cyl == 8))
+
+# IN operator
+mtcars %>%
+  filter(cyl %in% c(4, 6))
+
+# NOT IN
+mtcars %>%
+  filter(!cyl %in% c(4, 6))
+
+# Between
+mtcars %>%
+  filter(between(mpg, 15, 20))
+
+# Remove NAs
+df_with_na <- data.frame(x = c(1, 2, NA, 4), y = c(NA, 2, 3, 4))
+df_with_na %>%
+  filter(!is.na(x))
+
+# String matching
+iris %>%
+  filter(grepl("^set", Species))
+
+# Filter by quantile
+mtcars %>%
+  filter(mpg > quantile(mpg, 0.75))
+
+# Top n values
+mtcars %>%
+  slice_max(mpg, n = 5)
+
+mtcars %>%
+  slice_min(mpg, n = 5)
+
+# Random sample
+mtcars %>%
+  slice_sample(n = 10)
+
+mtcars %>%
+  slice_sample(prop = 0.25)
+```
+
+### mutate() - Create/Modify Columns
+
+```{r}
+# Add new column
+mtcars %>%
+  mutate(gpm = 1/mpg)
+
+# Multiple new columns
+mtcars %>%
+  mutate(
+    gpm = 1/mpg,
+    hp_per_cyl = hp/cyl,
+    wt_tons = wt/2
+  )
+
+# Modify existing column
+mtcars %>%
+  mutate(hp = hp * 1.1)
+
+# Conditional mutation
+mtcars %>%
+  mutate(
+    efficiency = case_when(
+      mpg > 25 ~ "High",
+      mpg > 20 ~ "Medium",
+      TRUE ~ "Low"
+    )
+  )
+
+# Multiple conditions
+mtcars %>%
+  mutate(
+    category = case_when(
+      cyl == 4 & mpg > 25 ~ "Efficient Small",
+      cyl == 4 & mpg <= 25 ~ "Average Small",
+      cyl == 6 ~ "Medium",
+      cyl == 8 & hp > 200 ~ "Powerful Large",
+      TRUE ~ "Other Large"
+    )
+  )
+
+# Use previous mutations
+mtcars %>%
+  mutate(
+    hp_per_cyl = hp/cyl,
+    hp_per_cyl_scaled = scale(hp_per_cyl)
+  )
+
+# Across multiple columns
+iris %>%
+  mutate(across(starts_with("Sepal"), ~ . * 10))
+
+iris %>%
+  mutate(across(where(is.numeric), ~ round(., 1)))
+
+# Multiple functions across columns
+iris %>%
+  mutate(across(where(is.numeric),
+                list(mean = mean, sd = sd),
+                .names = "{.col}_{.fn}"))
+
+# Conditional across
+iris %>%
+  mutate(across(where(is.numeric),
+                ~ if_else(. > mean(.), "High", "Low")))
+
+# Window functions
+mtcars %>%
+  mutate(
+    rank = row_number(desc(mpg)),
+    percentile = percent_rank(mpg),
+    cumulative_hp = cumsum(hp)
+  )
+
+# Lead and lag
+mtcars %>%
+  arrange(mpg) %>%
+  mutate(
+    mpg_prev = lag(mpg),
+    mpg_next = lead(mpg),
+    mpg_diff = mpg - lag(mpg)
+  )
+```
+
+### summarise() - Aggregate Data
+
+```{r}
+# Single summary
+mtcars %>%
+  summarise(mean_mpg = mean(mpg))
+
+# Multiple summaries
+mtcars %>%
+  summarise(
+    n = n(),
+    mean_mpg = mean(mpg),
+    sd_mpg = sd(mpg),
+    median_mpg = median(mpg),
+    min_mpg = min(mpg),
+    max_mpg = max(mpg),
+    q25 = quantile(mpg, 0.25),
+    q75 = quantile(mpg, 0.75)
+  )
+
+# Count distinct values
+mtcars %>%
+  summarise(
+    n_cars = n(),
+    n_cyl_types = n_distinct(cyl)
+  )
+
+# Across in summarise
+iris %>%
+  summarise(across(where(is.numeric),
+                   list(mean = mean, sd = sd)))
+
+# Custom summary function
+custom_summary <- function(x) {
+  c(
+    mean = mean(x, na.rm = TRUE),
+    sd = sd(x, na.rm = TRUE),
+    n = sum(!is.na(x))
+  )
+}
+
+mtcars %>%
+  summarise(across(c(mpg, hp), custom_summary))
+```
+
+### arrange() - Sort Data
+
+```{r}
+# Sort ascending
+mtcars %>%
+  arrange(mpg)
+
+# Sort descending
+mtcars %>%
+  arrange(desc(mpg))
+
+# Multiple columns
+mtcars %>%
+  arrange(cyl, desc(mpg))
+
+# Sort by expression
+mtcars %>%
+  arrange(desc(hp/wt))
+
+# Put NAs first or last
+df_with_na <- data.frame(x = c(3, 1, NA, 2))
+df_with_na %>% arrange(x)  # NA last (default)
+```
+
+### group_by() - Group Operations
+
+```{r}
+# Basic grouping
+mtcars %>%
+  group_by(cyl) %>%
+  summarise(mean_mpg = mean(mpg))
+
+# Multiple grouping variables
+mtcars %>%
+  group_by(cyl, am) %>%
+  summarise(
+    n = n(),
+    mean_mpg = mean(mpg),
+    mean_hp = mean(hp)
+  )
+
+# Group and mutate (within-group operations)
+mtcars %>%
+  group_by(cyl) %>%
+  mutate(
+    mean_mpg_by_cyl = mean(mpg),
+    mpg_centered = mpg - mean(mpg)
+  )
+
+# Group and filter
+mtcars %>%
+  group_by(cyl) %>%
+  filter(mpg > mean(mpg))
+
+# Count by group
+mtcars %>%
+  count(cyl, am)
+
+# Add count as column
+mtcars %>%
+  group_by(cyl) %>%
+  add_count()
+
+# Top n per group
+mtcars %>%
+  group_by(cyl) %>%
+  slice_max(mpg, n = 2)
+
+# Window functions by group
+mtcars %>%
+  group_by(cyl) %>%
+  mutate(
+    rank_within_cyl = row_number(desc(mpg)),
+    mpg_percentile = percent_rank(mpg)
+  )
+```
+
+## 1.2 Complex dplyr Workflows
+
+### Real-World Example 1: Customer Analysis
+
+```{r}
+# Create sample customer data
+set.seed(123)
+customers <- data.frame(
+  customer_id = 1:1000,
+  age = sample(18:80, 1000, replace = TRUE),
+  gender = sample(c("M", "F"), 1000, replace = TRUE),
+  region = sample(c("North", "South", "East", "West"), 1000, replace = TRUE),
+  purchase_amount = round(rnorm(1000, 100, 50), 2),
+  purchase_date = sample(seq(as.Date("2023-01-01"), as.Date("2023-12-31"), by = "day"),
+                        1000, replace = TRUE),
+  product_category = sample(c("Electronics", "Clothing", "Food", "Books"), 1000, replace = TRUE)
+)
+
+# Complex analysis workflow
+customer_analysis <- customers %>%
+  # Add derived columns
+  mutate(
+    age_group = case_when(
+      age < 25 ~ "18-24",
+      age < 35 ~ "25-34",
+      age < 50 ~ "35-49",
+      TRUE ~ "50+"
+    ),
+    month = format(purchase_date, "%Y-%m"),
+    high_value = purchase_amount > 150
+  ) %>%
+  # Group by multiple dimensions
+  group_by(region, age_group, product_category) %>%
+  # Calculate metrics
+  summarise(
+    n_customers = n_distinct(customer_id),
+    n_purchases = n(),
+    total_revenue = sum(purchase_amount),
+    avg_purchase = mean(purchase_amount),
+    pct_high_value = mean(high_value) * 100,
+    .groups = "drop"
+  ) %>%
+  # Filter to significant segments
+  filter(n_purchases >= 5) %>%
+  # Add revenue rank
+  arrange(desc(total_revenue)) %>%
+  mutate(revenue_rank = row_number()) %>%
+  # Reorder columns
+  select(revenue_rank, region, age_group, product_category,
+         n_customers, n_purchases, total_revenue, avg_purchase, pct_high_value)
+
+head(customer_analysis, 10)
+```
+
+### Real-World Example 2: Gene Expression Analysis
+
+```{r}
+# Create sample gene expression data
+set.seed(123)
+gene_expression <- data.frame(
+  gene_id = paste0("Gene_", rep(1:100, each = 6)),
+  sample_id = paste0("Sample_", rep(1:6, times = 100)),
+  condition = rep(rep(c("Control", "Treatment"), each = 3), times = 100),
+  replicate = rep(rep(1:3, times = 2), times = 100),
+  expression = rnorm(600, mean = 100, sd = 20)
+) %>%
+  mutate(
+    expression = ifelse(
+      gene_id %in% paste0("Gene_", 1:20) & condition == "Treatment",
+      expression * runif(n(), 1.5, 2.5),
+      expression
+    )
+  )
+
+# Differential expression analysis workflow
+diff_expr_analysis <- gene_expression %>%
+  # Calculate statistics by gene and condition
+  group_by(gene_id, condition) %>%
+  summarise(
+    n = n(),
+    mean_expr = mean(expression),
+    sd_expr = sd(expression),
+    se_expr = sd_expr / sqrt(n),
+    .groups = "drop"
+  ) %>%
+  # Reshape to wide format for comparison
+  pivot_wider(
+    names_from = condition,
+    values_from = c(mean_expr, sd_expr, se_expr)
+  ) %>%
+  # Calculate fold change and statistics
+  mutate(
+    fold_change = mean_expr_Treatment / mean_expr_Control,
+    log2_fc = log2(fold_change),
+    abs_log2_fc = abs(log2_fc),
+    significant = abs_log2_fc > 1
+  ) %>%
+  # Add gene ranks
+  arrange(desc(abs_log2_fc)) %>%
+  mutate(rank = row_number()) %>%
+  # Classify genes
+  mutate(
+    regulation = case_when(
+      log2_fc > 1 ~ "Upregulated",
+      log2_fc < -1 ~ "Downregulated",
+      TRUE ~ "Not significant"
+    )
+  )
+
+# Summary of results
+diff_expr_analysis %>%
+  count(regulation) %>%
+  mutate(percentage = n / sum(n) * 100)
+
+# Top upregulated genes
+diff_expr_analysis %>%
+  filter(regulation == "Upregulated") %>%
+  arrange(desc(log2_fc)) %>%
+  select(rank, gene_id, log2_fc, mean_expr_Control, mean_expr_Treatment) %>%
+  head(10)
+```
+
+## 1.3 tidyr for Data Reshaping
+
+### pivot_longer() - Wide to Long
+
+```{r}
+# Create wide data
+wide_data <- data.frame(
+  id = 1:5,
+  name = paste("Person", 1:5),
+  age = c(25, 30, 35, 28, 32),
+  score_2020 = c(85, 90, 78, 92, 88),
+  score_2021 = c(88, 92, 80, 95, 90),
+  score_2022 = c(90, 94, 85, 97, 92)
+)
+
+# Basic pivot longer
+wide_data %>%
+  pivot_longer(
+    cols = starts_with("score_"),
+    names_to = "year",
+    values_to = "score"
+  )
+
+# Extract year as numeric
+wide_data %>%
+  pivot_longer(
+    cols = starts_with("score_"),
+    names_to = "year",
+    names_prefix = "score_",
+    names_transform = list(year = as.integer),
+    values_to = "score"
+  )
+
+# Multiple value columns
+results_wide <- data.frame(
+  id = 1:3,
+  test1_score = c(85, 90, 78),
+  test1_time = c(45, 40, 50),
+  test2_score = c(88, 92, 80),
+  test2_time = c(42, 38, 48)
+)
+
+results_wide %>%
+  pivot_longer(
+    cols = -id,
+    names_to = c("test", ".value"),
+    names_sep = "_"
+  )
+```
+
+### pivot_wider() - Long to Wide
+
+```{r}
+# Create long data
+long_data <- data.frame(
+  id = rep(1:3, each = 3),
+  year = rep(c(2020, 2021, 2022), times = 3),
+  value = c(100, 110, 120, 200, 210, 220, 300, 310, 320)
+)
+
+# Basic pivot wider
+long_data %>%
+  pivot_wider(
+    names_from = year,
+    values_from = value
+  )
+
+# With name prefix
+long_data %>%
+  pivot_wider(
+    names_from = year,
+    names_prefix = "year_",
+    values_from = value
+  )
+
+# Multiple value columns
+long_multi <- data.frame(
+  id = rep(1:2, each = 2),
+  metric = rep(c("weight", "height"), times = 2),
+  value = c(70, 170, 80, 180),
+  unit = c("kg", "cm", "kg", "cm")
+)
+
+long_multi %>%
+  pivot_wider(
+    names_from = metric,
+    values_from = c(value, unit)
+  )
+```
+
+### separate() and unite()
+
+```{r}
+# Separate column
+combined_data <- data.frame(
+  id = 1:5,
+  date_time = c("2023-01-15_14:30", "2023-02-20_16:45",
+                "2023-03-10_09:15", "2023-04-05_11:00",
+                "2023-05-12_15:30")
+)
+
+combined_data %>%
+  separate(date_time,
+           into = c("date", "time"),
+           sep = "_")
+
+# Separate into multiple columns
+patient_data <- data.frame(
+  id = 1:3,
+  info = c("John_Doe_35_M", "Jane_Smith_28_F", "Bob_Johnson_42_M")
+)
+
+patient_data %>%
+  separate(info,
+           into = c("first_name", "last_name", "age", "gender"),
+           sep = "_",
+           convert = TRUE)  # Auto-convert types
+
+# Unite columns
+separated_data <- data.frame(
+  id = 1:3,
+  first = c("John", "Jane", "Bob"),
+  last = c("Doe", "Smith", "Johnson")
+)
+
+separated_data %>%
+  unite("full_name", first, last, sep = " ")
+
+# Unite keeping originals
+separated_data %>%
+  unite("full_name", first, last, sep = " ", remove = FALSE)
+```
+
+### Advanced Reshaping Example
+
+```{r}
+# Complex clinical trial data
+clinical_data <- data.frame(
+  patient_id = rep(1:4, each = 3),
+  visit = rep(c("Baseline", "Week_4", "Week_8"), times = 4),
+  treatment = rep(c("Drug_A", "Drug_A", "Placebo", "Placebo"), each = 3),
+  biomarker1 = round(rnorm(12, 100, 15), 1),
+  biomarker2 = round(rnorm(12, 50, 10), 1),
+  symptom_score = sample(0:10, 12, replace = TRUE)
+)
+
+# Complex transformation pipeline
+clinical_transformed <- clinical_data %>%
+  # Pivot biomarkers to long format
+  pivot_longer(
+    cols = starts_with("biomarker"),
+    names_to = "biomarker",
+    values_to = "value"
+  ) %>%
+  # Create combined identifier
+  unite("measurement", biomarker, visit, sep = "_", remove = FALSE) %>%
+  # Calculate baseline-adjusted values
+  group_by(patient_id, biomarker) %>%
+  mutate(
+    baseline_value = first(value),
+    change_from_baseline = value - baseline_value,
+    pct_change = (value - baseline_value) / baseline_value * 100
+  ) %>%
+  ungroup() %>%
+  # Pivot back to wide for analysis
+  select(patient_id, treatment, measurement, change_from_baseline) %>%
+  pivot_wider(
+    names_from = measurement,
+    values_from = change_from_baseline
+  )
+
+head(clinical_transformed)
+```
+
+## 1.4 Combining dplyr and tidyr
+
+### Complete Data Transformation Workflow
+
+```{r}
+# Create messy sales data
+sales_messy <- data.frame(
+  transaction = paste0("TXN_", 1:20),
+  customer_info = c(
+    rep("Region_North_Type_Premium", 5),
+    rep("Region_South_Type_Standard", 5),
+    rep("Region_East_Type_Premium", 5),
+    rep("Region_West_Type_Standard", 5)
+  ),
+  Q1_2023 = round(rnorm(20, 10000, 2000), 0),
+  Q2_2023 = round(rnorm(20, 12000, 2000), 0),
+  Q3_2023 = round(rnorm(20, 11000, 2000), 0),
+  Q4_2023 = round(rnorm(20, 15000, 3000), 0)
+)
+
+# Complete transformation
+sales_clean <- sales_messy %>%
+  # Separate customer info
+  separate(customer_info,
+           into = c("region_label", "region", "type_label", "customer_type"),
+           sep = "_") %>%
+  select(-region_label, -type_label) %>%
+  # Pivot quarters to long format
+  pivot_longer(
+    cols = matches("Q[1-4]_2023"),
+    names_to = "quarter",
+    values_to = "sales"
+  ) %>%
+  # Extract quarter number
+  mutate(quarter_num = as.integer(gsub("Q([1-4])_2023", "\\1", quarter))) %>%
+  # Calculate metrics by group
+  group_by(region, customer_type, quarter_num) %>%
+  summarise(
+    n_transactions = n(),
+    total_sales = sum(sales),
+    avg_sales = mean(sales),
+    median_sales = median(sales),
+    .groups = "drop"
+  ) %>%
+  # Calculate growth rates
+  arrange(region, customer_type, quarter_num) %>%
+  group_by(region, customer_type) %>%
+  mutate(
+    qoq_growth = (total_sales - lag(total_sales)) / lag(total_sales) * 100,
+    cumulative_sales = cumsum(total_sales)
+  ) %>%
+  ungroup() %>%
+  # Add rankings
+  group_by(quarter_num) %>%
+  mutate(
+    sales_rank = dense_rank(desc(total_sales))
+  ) %>%
+  ungroup()
+
+# View results
+sales_clean %>%
+  filter(quarter_num == 4) %>%
+  arrange(sales_rank)
+```
+
+---
+
+# Part 2: Data Visualization with ggplot2
+
+```{r}
+library(ggplot2)
+library(scales)
+library(RColorBrewer)
+```
+
+## 2.1 ggplot2 Grammar of Graphics
+
+### Basic Components
+
+```{r}
+# Basic structure
+# ggplot(data, aes(x, y, ...)) + geom_*() + ...
+
+# Minimal plot
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point()
+
+# With color
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point()
+
+# With size
+ggplot(mtcars, aes(x = wt, y = mpg, size = hp, color = factor(cyl))) +
+  geom_point(alpha = 0.7)
+```
+
+## 2.2 Scatter Plots
+
+```{r}
+# Basic scatter plot
+p1 <- ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point(size = 3, alpha = 0.6) +
+  labs(
+    title = "Fuel Efficiency vs Vehicle Weight",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon"
+  ) +
+  theme_minimal()
+
+p1
+
+# Scatter with trend line
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point(size = 3, alpha = 0.6) +
+  geom_smooth(method = "lm", se = TRUE, color = "blue") +
+  labs(title = "With Linear Regression Line") +
+  theme_minimal()
+
+# Multiple groups
+ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE) +
+  scale_color_brewer(palette = "Set1", name = "Cylinders") +
+  labs(
+    title = "Fuel Efficiency by Cylinder Count",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Scatter with marginal distributions
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width, color = Species)) +
+  geom_point(size = 2.5, alpha = 0.7) +
+  scale_color_brewer(palette = "Set2") +
+  theme_minimal()
+
+# Text labels
+top_cars <- mtcars %>%
+  arrange(desc(mpg)) %>%
+  head(5) %>%
+  mutate(car = rownames(.))
+
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point(alpha = 0.5) +
+  geom_text(data = top_cars, aes(label = car),
+            hjust = -0.1, size = 3, check_overlap = TRUE) +
+  theme_minimal()
+
+# Bubble chart
+ggplot(mtcars, aes(x = wt, y = mpg, size = hp, color = qsec)) +
+  geom_point(alpha = 0.6) +
+  scale_size_continuous(range = c(3, 12), name = "Horsepower") +
+  scale_color_viridis_c(name = "Quarter Mile Time") +
+  labs(
+    title = "Multi-dimensional Car Performance",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon"
+  ) +
+  theme_minimal()
+```
+
+## 2.3 Line Plots
+
+```{r}
+# Create time series data
+set.seed(123)
+time_data <- data.frame(
+  date = seq(as.Date("2023-01-01"), as.Date("2023-12-31"), by = "day"),
+  value = cumsum(rnorm(365, 0, 10)) + 100
+) %>%
+  mutate(
+    month = format(date, "%Y-%m"),
+    group = sample(c("A", "B", "C"), n(), replace = TRUE)
+  )
+
+# Basic line plot
+ggplot(time_data, aes(x = date, y = value)) +
+  geom_line(color = "steelblue", size = 1) +
+  labs(
+    title = "Time Series Data",
+    x = "Date",
+    y = "Value"
+  ) +
+  theme_minimal()
+
+# Multiple lines
+monthly_data <- time_data %>%
+  group_by(month, group) %>%
+  summarise(mean_value = mean(value), .groups = "drop") %>%
+  mutate(month_date = as.Date(paste0(month, "-01")))
+
+ggplot(monthly_data, aes(x = month_date, y = mean_value, color = group)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = "Monthly Trends by Group",
+    x = "Month",
+    y = "Average Value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Area plot
+ggplot(time_data %>% head(100), aes(x = date, y = value)) +
+  geom_area(fill = "steelblue", alpha = 0.5) +
+  geom_line(color = "darkblue", size = 1) +
+  labs(title = "Area Plot") +
+  theme_minimal()
+
+# Stacked area
+ggplot(monthly_data, aes(x = month_date, y = mean_value, fill = group)) +
+  geom_area(alpha = 0.7) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Stacked Area Chart") +
+  theme_minimal()
+
+# Step plot
+ggplot(time_data %>% head(50), aes(x = date, y = value)) +
+  geom_step(color = "steelblue", size = 1) +
+  labs(title = "Step Plot") +
+  theme_minimal()
+```
+
+## 2.4 Bar Plots
+
+```{r}
+# Count bar plot
+ggplot(mtcars, aes(x = factor(cyl))) +
+  geom_bar(fill = "steelblue") +
+  labs(
+    title = "Distribution of Cylinder Counts",
+    x = "Number of Cylinders",
+    y = "Count"
+  ) +
+  theme_minimal()
+
+# Bar plot with values
+summary_data <- mtcars %>%
+  group_by(cyl) %>%
+  summarise(mean_mpg = mean(mpg), se = sd(mpg)/sqrt(n()))
+
+ggplot(summary_data, aes(x = factor(cyl), y = mean_mpg)) +
+  geom_col(fill = "steelblue") +
+  geom_errorbar(aes(ymin = mean_mpg - se, ymax = mean_mpg + se),
+                width = 0.2) +
+  geom_text(aes(label = round(mean_mpg, 1)), vjust = -1) +
+  labs(
+    title = "Mean MPG by Cylinder Count",
+    x = "Cylinders",
+    y = "Mean MPG"
+  ) +
+  theme_minimal()
+
+# Grouped bar plot
+grouped_data <- mtcars %>%
+  group_by(cyl, am) %>%
+  summarise(mean_mpg = mean(mpg), .groups = "drop") %>%
+  mutate(transmission = factor(am, labels = c("Automatic", "Manual")))
+
+ggplot(grouped_data, aes(x = factor(cyl), y = mean_mpg, fill = transmission)) +
+  geom_col(position = "dodge") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "MPG by Cylinder Count and Transmission",
+    x = "Cylinders",
+    y = "Mean MPG",
+    fill = "Transmission"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# Stacked bar plot
+ggplot(grouped_data, aes(x = factor(cyl), y = mean_mpg, fill = transmission)) +
+  geom_col(position = "stack") +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Stacked Bar Plot") +
+  theme_minimal()
+
+# Horizontal bar plot
+top_cars <- mtcars %>%
+  arrange(desc(mpg)) %>%
+  head(10) %>%
+  mutate(car = rownames(.))
+
+ggplot(top_cars, aes(x = reorder(car, mpg), y = mpg)) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    title = "Top 10 Most Fuel Efficient Cars",
+    x = "",
+    y = "Miles per Gallon"
+  ) +
+  theme_minimal()
+```
+
+## 2.5 Distributions
+
+```{r}
+# Histogram
+ggplot(mtcars, aes(x = mpg)) +
+  geom_histogram(bins = 15, fill = "steelblue", color = "white") +
+  labs(
+    title = "Distribution of MPG",
+    x = "Miles per Gallon",
+    y = "Frequency"
+  ) +
+  theme_minimal()
+
+# Histogram with density
+ggplot(mtcars, aes(x = mpg)) +
+  geom_histogram(aes(y = after_stat(density)),
+                 bins = 15, fill = "lightblue", color = "white") +
+  geom_density(color = "darkblue", size = 1.2) +
+  labs(title = "Histogram with Density Overlay") +
+  theme_minimal()
+
+# Overlapping histograms
+ggplot(iris, aes(x = Sepal.Length, fill = Species)) +
+  geom_histogram(alpha = 0.6, position = "identity", bins = 20) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Overlapping Histograms") +
+  theme_minimal()
+
+# Density plot
+ggplot(iris, aes(x = Sepal.Length, fill = Species)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Density Plot by Species",
+    x = "Sepal Length",
+    y = "Density"
+  ) +
+  theme_minimal()
+
+# Violin plot
+ggplot(iris, aes(x = Species, y = Sepal.Length, fill = Species)) +
+  geom_violin(alpha = 0.7) +
+  geom_boxplot(width = 0.2, fill = "white", alpha = 0.8) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Violin Plot with Boxplot Overlay",
+    x = "Species",
+    y = "Sepal Length"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Ridge plot (requires ggridges)
+library(ggridges)
+ggplot(iris, aes(x = Sepal.Length, y = Species, fill = Species)) +
+  geom_density_ridges(alpha = 0.7) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Ridge Plot") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+## 2.6 Box Plots
+
+```{r}
+# Basic boxplot
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_boxplot(fill = "steelblue", alpha = 0.7) +
+  labs(
+    title = "MPG Distribution by Cylinder Count",
+    x = "Cylinders",
+    y = "Miles per Gallon"
+  ) +
+  theme_minimal()
+
+# Boxplot with points
+ggplot(mtcars, aes(x = factor(cyl), y = mpg)) +
+  geom_boxplot(fill = "steelblue", alpha = 0.5, outlier.shape = NA) +
+  geom_jitter(width = 0.2, alpha = 0.5, color = "darkred") +
+  labs(title = "Boxplot with Individual Points") +
+  theme_minimal()
+
+# Grouped boxplot
+ggplot(mtcars, aes(x = factor(cyl), y = mpg, fill = factor(am))) +
+  geom_boxplot() +
+  scale_fill_manual(
+    values = c("lightblue", "lightcoral"),
+    labels = c("Automatic", "Manual"),
+    name = "Transmission"
+  ) +
+  labs(title = "Grouped Boxplot") +
+  theme_minimal()
+
+# Notched boxplot
+ggplot(iris, aes(x = Species, y = Sepal.Length, fill = Species)) +
+  geom_boxplot(notch = TRUE, alpha = 0.7) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(title = "Notched Boxplot") +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# Horizontal boxplot
+ggplot(mtcars, aes(x = mpg, y = factor(cyl))) +
+  geom_boxplot(fill = "steelblue", alpha = 0.7) +
+  labs(
+    title = "Horizontal Boxplot",
+    x = "Miles per Gallon",
+    y = "Cylinders"
+  ) +
+  theme_minimal()
+```
+
+## 2.7 Heatmaps
+
+```{r}
+# Correlation heatmap
+cor_matrix <- cor(mtcars[, 1:7])
+cor_data <- as.data.frame(as.table(cor_matrix))
+names(cor_data) <- c("Var1", "Var2", "Correlation")
+
+ggplot(cor_data, aes(x = Var1, y = Var2, fill = Correlation)) +
+  geom_tile() +
+  geom_text(aes(label = round(Correlation, 2)), size = 3) +
+  scale_fill_gradient2(
+    low = "blue", mid = "white", high = "red",
+    midpoint = 0, limits = c(-1, 1)
+  ) +
+  labs(title = "Correlation Heatmap") +
+  theme_minimal() +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.title = element_blank()
+  )
+
+# Time series heatmap
+# Create sample data
+heatmap_data <- expand.grid(
+  day = 1:31,
+  hour = 0:23
+) %>%
+  mutate(value = sin(day/5) * cos(hour/3) + rnorm(n(), 0, 0.5))
+
+ggplot(heatmap_data, aes(x = hour, y = day, fill = value)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  scale_x_continuous(breaks = seq(0, 23, 3)) +
+  labs(
+    title = "Activity Heatmap",
+    x = "Hour of Day",
+    y = "Day of Month"
+  ) +
+  theme_minimal()
+```
+
+## 2.8 Advanced Customization
+
+```{r}
+# Professional publication-ready plot
+publication_plot <- ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl), shape = factor(am))) +
+  geom_point(size = 4, alpha = 0.8) +
+  geom_smooth(method = "lm", se = TRUE, linetype = "dashed", size = 0.8) +
+  scale_color_manual(
+    values = c("4" = "#E69F00", "6" = "#56B4E9", "8" = "#009E73"),
+    name = "Cylinders"
+  ) +
+  scale_shape_manual(
+    values = c("0" = 16, "1" = 17),
+    labels = c("Automatic", "Manual"),
+    name = "Transmission"
+  ) +
+  labs(
+    title = "Vehicle Performance Analysis",
+    subtitle = "Relationship between weight and fuel efficiency",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon (MPG)",
+    caption = "Data source: Motor Trend Car Road Tests (1974)"
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, color = "gray30"),
+    axis.title = element_text(size = 12, face = "bold"),
+    axis.text = element_text(size = 10),
+    legend.position = "bottom",
+    legend.title = element_text(size = 11, face = "bold"),
+    legend.text = element_text(size = 10),
+    panel.grid.major = element_line(color = "gray90", size = 0.5),
+    panel.grid.minor = element_blank(),
+    plot.caption = element_text(size = 9, hjust = 1, color = "gray50")
+  ) +
+  guides(
+    color = guide_legend(order = 1, nrow = 1),
+    shape = guide_legend(order = 2, nrow = 1)
+  )
+
+publication_plot
+
+# Faceted plot
+ggplot(iris, aes(x = Sepal.Length, y = Sepal.Width)) +
+  geom_point(aes(color = Species), size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE, color = "black", linetype = "dashed") +
+  facet_wrap(~ Species, scales = "free") +
+  scale_color_brewer(palette = "Set1") +
+  labs(
+    title = "Sepal Dimensions by Species",
+    x = "Sepal Length (cm)",
+    y = "Sepal Width (cm)"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    strip.background = element_rect(fill = "gray90"),
+    strip.text = element_text(face = "bold")
+  )
+
+# Multi-panel facet grid
+ggplot(mtcars, aes(x = wt, y = mpg)) +
+  geom_point(size = 2, alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, color = "red") +
+  facet_grid(am ~ cyl, labeller = labeller(
+    am = c("0" = "Automatic", "1" = "Manual"),
+    cyl = c("4" = "4 Cyl", "6" = "6 Cyl", "8" = "8 Cyl")
+  )) +
+  labs(
+    title = "MPG vs Weight by Transmission and Cylinders",
+    x = "Weight (1000 lbs)",
+    y = "MPG"
+  ) +
+  theme_bw()
+```
+
+## 2.9 Specialized Plots for Bioinformatics
+
+```{r}
+# Volcano plot
+set.seed(123)
+volcano_data <- data.frame(
+  gene = paste0("Gene_", 1:1000),
+  log2FC = rnorm(1000, 0, 1.5),
+  pvalue = runif(1000, 0, 1)
+) %>%
+  mutate(
+    neglog10p = -log10(pvalue),
+    significant = pvalue < 0.05 & abs(log2FC) > 1,
+    regulation = case_when(
+      log2FC > 1 & pvalue < 0.05 ~ "Upregulated",
+      log2FC < -1 & pvalue < 0.05 ~ "Downregulated",
+      TRUE ~ "Not Significant"
+    )
+  )
+
+ggplot(volcano_data, aes(x = log2FC, y = neglog10p, color = regulation)) +
+  geom_point(alpha = 0.6, size = 2) +
+  scale_color_manual(
+    values = c("Upregulated" = "red", "Downregulated" = "blue", "Not Significant" = "gray"),
+    name = ""
+  ) +
+  geom_vline(xintercept = c(-1, 1), linetype = "dashed", color = "gray40") +
+  geom_hline(yintercept = -log10(0.05), linetype = "dashed", color = "gray40") +
+  labs(
+    title = "Volcano Plot",
+    subtitle = "Differential Gene Expression",
+    x = "Log2 Fold Change",
+    y = "-Log10 P-value"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+
+# MA plot
+ma_data <- data.frame(
+  A = runif(1000, 0, 15),
+  M = rnorm(1000, 0, 1.5)
+) %>%
+  mutate(significant = abs(M) > 1)
+
+ggplot(ma_data, aes(x = A, y = M, color = significant)) +
+  geom_point(alpha = 0.5, size = 1.5) +
+  scale_color_manual(values = c("gray", "red"), name = "Significant") +
+  geom_hline(yintercept = 0, color = "blue", linetype = "solid") +
+  geom_hline(yintercept = c(-1, 1), color = "blue", linetype = "dashed") +
+  labs(
+    title = "MA Plot",
+    x = "Average Expression",
+    y = "Log Fold Change"
+  ) +
+  theme_minimal()
+```
+
+---
+
+# Part 3: Machine Learning with caret
+
+```{r}
+library(caret)
+library(randomForest)
+library(e1071)
+```
+
+## 3.1 Data Preparation
+
+```{r}
+# Load and prepare data
+data(iris)
+set.seed(123)
+
+# Train-test split
+trainIndex <- createDataPartition(iris$Species, p = 0.7, list = FALSE)
+train_data <- iris[trainIndex, ]
+test_data <- iris[-trainIndex, ]
+
+# Check class balance
+table(train_data$Species)
+
+# Feature scaling
+preproc <- preProcess(train_data[, -5], method = c("center", "scale"))
+train_scaled <- predict(preproc, train_data[, -5])
+test_scaled <- predict(preproc, test_data[, -5])
+
+# Add back the target
+train_scaled$Species <- train_data$Species
+test_scaled$Species <- test_data$Species
+
+# Handle missing values
+data_with_na <- iris
+data_with_na[sample(1:150, 10), 1] <- NA
+
+# Impute missing values
+preproc_impute <- preProcess(data_with_na[, -5],
+                              method = c("medianImpute", "center", "scale"))
+data_imputed <- predict(preproc_impute, data_with_na[, -5])
+```
+
+## 3.2 Model Training - Classification
+
+### Random Forest
+
+```{r}
+# Train random forest
+set.seed(123)
+rf_model <- train(
+  Species ~ .,
+  data = train_data,
+  method = "rf",
+  trControl = trainControl(
+    method = "cv",
+    number = 10,
+    verboseIter = FALSE
+  ),
+  tuneGrid = expand.grid(
+    mtry = c(2, 3, 4)
+  )
+)
+
+# View results
+print(rf_model)
+plot(rf_model)
+
+# Variable importance
+varImp(rf_model)
+plot(varImp(rf_model))
+
+# Make predictions
+rf_pred <- predict(rf_model, test_data)
+
+# Confusion matrix
+confusionMatrix(rf_pred, test_data$Species)
+```
+
+### Support Vector Machine
+
+```{r}
+# Train SVM
+set.seed(123)
+svm_model <- train(
+  Species ~ .,
+  data = train_data,
+  method = "svmRadial",
+  trControl = trainControl(
+    method = "cv",
+    number = 10
+  ),
+  tuneGrid = expand.grid(
+    C = c(0.1, 1, 10),
+    sigma = c(0.01, 0.1, 1)
+  )
+)
+
+print(svm_model)
+plot(svm_model)
+
+# Predictions
+svm_pred <- predict(svm_model, test_data)
+confusionMatrix(svm_pred, test_data$Species)
+```
+
+### K-Nearest Neighbors
+
+```{r}
+# Train KNN
+set.seed(123)
+knn_model <- train(
+  Species ~ .,
+  data = train_scaled,
+  method = "knn",
+  trControl = trainControl(
+    method = "cv",
+    number = 10
+  ),
+  tuneGrid = expand.grid(
+    k = seq(1, 20, 2)
+  )
+)
+
+print(knn_model)
+plot(knn_model)
+
+# Predictions
+knn_pred <- predict(knn_model, test_scaled)
+confusionMatrix(knn_pred, test_scaled$Species)
+```
+
+### Gradient Boosting Machine
+
+```{r}
+# Train GBM
+set.seed(123)
+gbm_model <- train(
+  Species ~ .,
+  data = train_data,
+  method = "gbm",
+  trControl = trainControl(
+    method = "cv",
+    number = 10,
+    verboseIter = FALSE
+  ),
+  tuneGrid = expand.grid(
+    n.trees = c(50, 100, 150),
+    interaction.depth = c(1, 3, 5),
+    shrinkage = 0.1,
+    n.minobsinnode = 10
+  ),
+  verbose = FALSE
+)
+
+print(gbm_model)
+plot(gbm_model)
+```
+
+## 3.3 Model Training - Regression
+
+```{r}
+# Prepare regression data
+data(mtcars)
+set.seed(123)
+trainIndex <- createDataPartition(mtcars$mpg, p = 0.7, list = FALSE)
+train_reg <- mtcars[trainIndex, ]
+test_reg <- mtcars[-trainIndex, ]
+
+# Linear Regression
+lm_model <- train(
+  mpg ~ .,
+  data = train_reg,
+  method = "lm",
+  trControl = trainControl(method = "cv", number = 10)
+)
+
+# Predictions
+lm_pred <- predict(lm_model, test_reg)
+
+# Performance metrics
+postResample(lm_pred, test_reg$mpg)
+
+# Random Forest Regression
+rf_reg_model <- train(
+  mpg ~ .,
+  data = train_reg,
+  method = "rf",
+  trControl = trainControl(
+    method = "cv",
+    number = 10
+  ),
+  tuneGrid = expand.grid(
+    mtry = c(2, 4, 6, 8)
+  )
+)
+
+print(rf_reg_model)
+
+# Predictions
+rf_reg_pred <- predict(rf_reg_model, test_reg)
+postResample(rf_reg_pred, test_reg$mpg)
+
+# Support Vector Regression
+svm_reg_model <- train(
+  mpg ~ .,
+  data = train_reg,
+  method = "svmRadial",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneLength = 10
+)
+
+svm_reg_pred <- predict(svm_reg_model, test_reg)
+postResample(svm_reg_pred, test_reg$mpg)
+```
+
+## 3.4 Advanced Cross-Validation
+
+```{r}
+# Repeated cross-validation
+set.seed(123)
+train_control_repeated <- trainControl(
+  method = "repeatedcv",
+  number = 10,
+  repeats = 3,
+  savePredictions = "final",
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary
+)
+
+rf_repeated <- train(
+  Species ~ .,
+  data = train_data,
+  method = "rf",
+  trControl = train_control_repeated,
+  metric = "Accuracy",
+  tuneLength = 5
+)
+
+print(rf_repeated)
+
+# Leave-one-out cross-validation
+train_control_loocv <- trainControl(
+  method = "LOOCV"
+)
+
+# Bootstrap
+train_control_boot <- trainControl(
+  method = "boot",
+  number = 25
+)
+
+# Custom train/test splits
+custom_folds <- createFolds(train_data$Species, k = 5, returnTrain = TRUE)
+train_control_custom <- trainControl(
+  method = "cv",
+  index = custom_folds
+)
+```
+
+## 3.5 Hyperparameter Tuning
+
+```{r}
+# Grid search
+tune_grid <- expand.grid(
+  mtry = seq(2, 4, 1),
+  splitrule = c("gini", "extratrees"),
+  min.node.size = c(1, 5, 10)
+)
+
+set.seed(123)
+rf_tuned <- train(
+  Species ~ .,
+  data = train_data,
+  method = "ranger",
+  trControl = trainControl(method = "cv", number = 10),
+  tuneGrid = tune_grid
+)
+
+print(rf_tuned)
+plot(rf_tuned)
+
+# Random search
+train_control_random <- trainControl(
+  method = "cv",
+  number = 10,
+  search = "random"
+)
+
+set.seed(123)
+rf_random <- train(
+  Species ~ .,
+  data = train_data,
+  method = "rf",
+  trControl = train_control_random,
+  tuneLength = 15
+)
+
+plot(rf_random)
+```
+
+## 3.6 Model Comparison
+
+```{r}
+# Train multiple models
+set.seed(123)
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  classProbs = TRUE
+)
+
+# Random Forest
+model_rf <- train(
+  Species ~ .,
+  data = train_data,
+  method = "rf",
+  trControl = train_control
+)
+
+# SVM
+model_svm <- train(
+  Species ~ .,
+  data = train_data,
+  method = "svmRadial",
+  trControl = train_control
+)
+
+# KNN
+model_knn <- train(
+  Species ~ .,
+  data = train_scaled,
+  method = "knn",
+  trControl = train_control
+)
+
+# Naive Bayes
+model_nb <- train(
+  Species ~ .,
+  data = train_data,
+  method = "naive_bayes",
+  trControl = train_control
+)
+
+# Compare models
+model_list <- list(
+  RF = model_rf,
+  SVM = model_svm,
+  KNN = model_knn,
+  NB = model_nb
+)
+
+# Resampling comparison
+resamples_result <- resamples(model_list)
+summary(resamples_result)
+
+# Visualize comparison
+dotplot(resamples_result)
+bwplot(resamples_result)
+
+# Test set performance
+results <- data.frame(
+  Model = names(model_list),
+  Accuracy = sapply(model_list, function(m) {
+    pred <- predict(m, if(deparse(substitute(m)) == "model_knn") test_scaled else test_data)
+    confusionMatrix(pred, test_data$Species)$overall["Accuracy"]
+  })
+)
+
+print(results)
+```
+
+## 3.7 Feature Selection
+
+```{r}
+# Recursive Feature Elimination (RFE)
+set.seed(123)
+control_rfe <- rfeControl(
+  functions = rfFuncs,
+  method = "cv",
+  number = 10
+)
+
+rfe_result <- rfe(
+  x = train_data[, -5],
+  y = train_data$Species,
+  sizes = c(1, 2, 3, 4),
+  rfeControl = control_rfe
+)
+
+print(rfe_result)
+plot(rfe_result, type = c("g", "o"))
+predictors(rfe_result)
+
+# Feature importance across models
+importance_rf <- varImp(model_rf)
+importance_svm <- varImp(model_svm)
+
+plot(importance_rf, main = "RF Feature Importance")
+plot(importance_svm, main = "SVM Feature Importance")
+```
+
+## 3.8 Complete Machine Learning Workflow
+
+```{r}
+# Complete workflow with real-world considerations
+set.seed(123)
+
+# 1. Data preparation
+data(iris)
+
+# Create train/validation/test split
+trainIndex <- createDataPartition(iris$Species, p = 0.6, list = FALSE)
+train_full <- iris[trainIndex, ]
+temp <- iris[-trainIndex, ]
+
+valIndex <- createDataPartition(temp$Species, p = 0.5, list = FALSE)
+validation <- temp[valIndex, ]
+test_final <- temp[-valIndex, ]
+
+# 2. Preprocessing
+preproc_params <- preProcess(
+  train_full[, -5],
+  method = c("center", "scale", "nzv")
+)
+
+train_processed <- predict(preproc_params, train_full)
+validation_processed <- predict(preproc_params, validation)
+test_processed <- predict(preproc_params, test_final)
+
+# 3. Define training control
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  savePredictions = "final",
+  classProbs = TRUE,
+  summaryFunction = multiClassSummary,
+  verboseIter = TRUE
+)
+
+# 4. Train multiple models with hyperparameter tuning
+models <- list()
+
+# Random Forest
+models$rf <- train(
+  Species ~ .,
+  data = train_processed,
+  method = "rf",
+  trControl = train_control,
+  tuneGrid = expand.grid(mtry = c(2, 3, 4)),
+  metric = "Accuracy"
+)
+
+# SVM
+models$svm <- train(
+  Species ~ .,
+  data = train_processed,
+  method = "svmRadial",
+  trControl = train_control,
+  tuneLength = 10,
+  metric = "Accuracy"
+)
+
+# XGBoost
+models$xgb <- train(
+  Species ~ .,
+  data = train_processed,
+  method = "xgbTree",
+  trControl = train_control,
+  tuneLength = 5,
+  metric = "Accuracy",
+  verbosity = 0
+)
+
+# 5. Model selection on validation set
+validation_results <- sapply(models, function(model) {
+  pred <- predict(model, validation_processed)
+  confusionMatrix(pred, validation_processed$Species)$overall["Accuracy"]
+})
+
+print("Validation Results:")
+print(validation_results)
+
+# Select best model
+best_model_name <- names(which.max(validation_results))
+best_model <- models[[best_model_name]]
+
+# 6. Final evaluation on test set
+test_pred <- predict(best_model, test_processed)
+final_cm <- confusionMatrix(test_pred, test_processed$Species)
+
+print(paste("Best Model:", best_model_name))
+print(final_cm)
+
+# 7. Feature importance
+final_importance <- varImp(best_model)
+plot(final_importance, main = paste("Feature Importance -", best_model_name))
+
+# 8. Prediction probabilities
+pred_probs <- predict(best_model, test_processed, type = "prob")
+print(head(pred_probs))
+```
+
+---
+
+# Part 4: Integrated Workflow Example
+
+## Real-World Data Analysis Pipeline
+
+```{r}
+# Complete data analysis workflow combining all tools
+set.seed(123)
+
+# 1. DATA IMPORT AND PREPARATION (dplyr/tidyr)
+# Simulate realistic customer purchase data
+customers <- data.frame(
+  customer_id = 1:500,
+  age = sample(18:80, 500, replace = TRUE),
+  gender = sample(c("M", "F"), 500, replace = TRUE),
+  income = round(rnorm(500, 50000, 20000)),
+  region = sample(c("North", "South", "East", "West"), 500, replace = TRUE)
+)
+
+purchases <- data.frame(
+  purchase_id = 1:2000,
+  customer_id = sample(1:500, 2000, replace = TRUE),
+  product_category = sample(c("Electronics", "Clothing", "Food", "Books"), 2000, replace = TRUE),
+  amount = round(rnorm(2000, 100, 50)),
+  date = sample(seq(as.Date("2023-01-01"), as.Date("2023-12-31"), by = "day"),
+                2000, replace = TRUE)
+)
+
+# 2. DATA MANIPULATION (dplyr/tidyr)
+customer_features <- purchases %>%
+  # Join with customer data
+  left_join(customers, by = "customer_id") %>%
+  # Add time features
+  mutate(
+    month = format(date, "%Y-%m"),
+    quarter = paste0("Q", quarter(date)),
+    day_of_week = weekdays(date)
+  ) %>%
+  # Calculate customer-level features
+  group_by(customer_id) %>%
+  summarise(
+    n_purchases = n(),
+    total_spent = sum(amount),
+    avg_purchase = mean(amount),
+    purchase_range = max(amount) - min(amount),
+    n_categories = n_distinct(product_category),
+    days_active = n_distinct(date),
+    .groups = "drop"
+  ) %>%
+  # Join back customer demographics
+  left_join(customers, by = "customer_id") %>%
+  # Create target variable (high-value customer)
+  mutate(
+    high_value = factor(ifelse(total_spent > median(total_spent), "High", "Low")),
+    age_group = cut(age, breaks = c(0, 30, 50, 100), labels = c("Young", "Middle", "Senior"))
+  ) %>%
+  # Select relevant features
+  select(-customer_id)
+
+# 3. EXPLORATORY VISUALIZATION (ggplot2)
+# Distribution of total spend
+p1 <- ggplot(customer_features, aes(x = total_spent)) +
+  geom_histogram(bins = 30, fill = "steelblue", alpha = 0.7) +
+  geom_vline(xintercept = median(customer_features$total_spent),
+             color = "red", linetype = "dashed", size = 1) +
+  labs(
+    title = "Distribution of Customer Spending",
+    x = "Total Spent ($)",
+    y = "Number of Customers"
+  ) +
+  theme_minimal()
+
+# Spending by demographics
+p2 <- ggplot(customer_features, aes(x = age_group, y = total_spent, fill = gender)) +
+  geom_boxplot(alpha = 0.7) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Spending by Age Group and Gender",
+    x = "Age Group",
+    y = "Total Spent ($)"
+  ) +
+  theme_minimal()
+
+# Feature correlations
+numeric_features <- customer_features %>%
+  select(where(is.numeric))
+
+cor_matrix <- cor(numeric_features)
+cor_data <- as.data.frame(as.table(cor_matrix))
+names(cor_data) <- c("Var1", "Var2", "Correlation")
+
+p3 <- ggplot(cor_data, aes(x = Var1, y = Var2, fill = Correlation)) +
+  geom_tile() +
+  scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+  labs(title = "Feature Correlation Matrix") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Display plots
+library(patchwork)
+(p1 | p2) / p3
+
+# 4. MACHINE LEARNING (caret)
+# Prepare data for modeling
+ml_data <- customer_features %>%
+  select(-total_spent) %>%  # Remove target-related feature
+  na.omit()
+
+# Train-test split
+trainIndex <- createDataPartition(ml_data$high_value, p = 0.7, list = FALSE)
+train_ml <- ml_data[trainIndex, ]
+test_ml <- ml_data[-trainIndex, ]
+
+# Define training control
+train_control <- trainControl(
+  method = "cv",
+  number = 10,
+  classProbs = TRUE,
+  summaryFunction = twoClassSummary,
+  savePredictions = "final"
+)
+
+# Train models
+models <- list()
+
+# Logistic Regression
+models$glm <- train(
+  high_value ~ .,
+  data = train_ml,
+  method = "glm",
+  family = "binomial",
+  trControl = train_control,
+  metric = "ROC"
+)
+
+# Random Forest
+models$rf <- train(
+  high_value ~ .,
+  data = train_ml,
+  method = "rf",
+  trControl = train_control,
+  tuneGrid = expand.grid(mtry = c(2, 4, 6)),
+  metric = "ROC"
+)
+
+# Gradient Boosting
+models$gbm <- train(
+  high_value ~ .,
+  data = train_ml,
+  method = "gbm",
+  trControl = train_control,
+  verbose = FALSE,
+  metric = "ROC"
+)
+
+# Compare models
+resamples_result <- resamples(models)
+summary(resamples_result)
+
+# Visualize comparison
+dotplot(resamples_result, metric = "ROC")
+
+# Select best model and evaluate
+best_model <- models$rf  # Based on comparison
+
+# Test set predictions
+test_pred <- predict(best_model, test_ml)
+test_prob <- predict(best_model, test_ml, type = "prob")
+
+# Confusion matrix
+cm <- confusionMatrix(test_pred, test_ml$high_value)
+print(cm)
+
+# ROC curve
+library(pROC)
+roc_obj <- roc(test_ml$high_value, test_prob$High)
+plot(roc_obj, main = "ROC Curve - Customer Segmentation Model")
+auc(roc_obj)
+
+# Feature importance
+importance <- varImp(best_model)
+plot(importance, main = "Feature Importance for Customer Value Prediction")
+
+# 5. RESULTS VISUALIZATION (ggplot2)
+# Create prediction results dataframe
+results_df <- test_ml %>%
+  mutate(
+    predicted = test_pred,
+    probability = test_prob$High,
+    correct = (predicted == high_value)
+  )
+
+# Prediction probability distribution
+ggplot(results_df, aes(x = probability, fill = high_value)) +
+  geom_density(alpha = 0.5) +
+  scale_fill_brewer(palette = "Set1") +
+  labs(
+    title = "Prediction Probability Distribution",
+    x = "Predicted Probability of High Value",
+    y = "Density",
+    fill = "Actual Class"
+  ) +
+  theme_minimal()
+
+# Confusion matrix heatmap
+cm_data <- as.data.frame(cm$table)
+ggplot(cm_data, aes(x = Reference, y = Prediction, fill = Freq)) +
+  geom_tile() +
+  geom_text(aes(label = Freq), size = 8, color = "white") +
+  scale_fill_gradient(low = "lightblue", high = "darkblue") +
+  labs(
+    title = "Confusion Matrix",
+    x = "Actual Class",
+    y = "Predicted Class"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+# 6. BUSINESS INSIGHTS (dplyr + ggplot2)
+# Analyze misclassifications
+misclassified <- results_df %>%
+  filter(!correct) %>%
+  group_by(age_group, gender, region) %>%
+  summarise(
+    n_errors = n(),
+    avg_n_purchases = mean(n_purchases),
+    avg_purchase = mean(avg_purchase),
+    .groups = "drop"
+  ) %>%
+  arrange(desc(n_errors))
+
+print("Top Misclassification Patterns:")
+print(head(misclassified))
+
+# Success rate by segment
+segment_performance <- results_df %>%
+  group_by(region, age_group) %>%
+  summarise(
+    n = n(),
+    accuracy = mean(correct),
+    avg_prob = mean(probability),
+    .groups = "drop"
+  )
+
+ggplot(segment_performance, aes(x = age_group, y = accuracy, fill = region)) +
+  geom_col(position = "dodge") +
+  geom_text(aes(label = scales::percent(accuracy, accuracy = 0.1)),
+            position = position_dodge(width = 0.9), vjust = -0.5, size = 3) +
+  scale_y_continuous(labels = scales::percent, limits = c(0, 1)) +
+  scale_fill_brewer(palette = "Set2") +
+  labs(
+    title = "Model Accuracy by Customer Segment",
+    x = "Age Group",
+    y = "Accuracy",
+    fill = "Region"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "bottom")
+```
+
+# Summary
+
+This comprehensive guide covered:
+
+## dplyr & tidyr
+- All major verbs with extensive examples
+- Complex real-world workflows
+- Data reshaping strategies
+- Advanced chaining patterns
+
+## ggplot2
+- All major plot types
+- Professional customization
+- Publication-ready figures
+- Bioinformatics-specific plots
+
+## caret
+- Complete ML workflows
+- Multiple model comparison
+- Hyperparameter tuning
+- Feature selection
+- Model evaluation
+
+## Integrated Workflow
+- End-to-end data analysis
+- Combining all three tools
+- Real-world business case
+- From data to insights
+
+# Key Takeaways
+
+1. **dplyr/tidyr**: Master these for efficient data manipulation
+2. **ggplot2**: Create publication-quality visualizations
+3. **caret**: Streamline machine learning workflows
+4. **Integration**: Combine all three for powerful analyses
+
+# Next Steps
+
+- Practice with your own datasets
+- Explore additional geoms and aesthetics
+- Try different ML algorithms
+- Build complete analysis pipelines
+
+# References
+
+- [dplyr documentation](https://dplyr.tidyverse.org/)
+- [tidyr documentation](https://tidyr.tidyverse.org/)
+- [ggplot2 documentation](https://ggplot2.tidyverse.org/)
+- [caret documentation](https://topepo.github.io/caret/)
+- [R for Data Science](https://r4ds.had.co.nz/)

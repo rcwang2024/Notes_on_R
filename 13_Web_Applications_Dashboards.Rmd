@@ -1,0 +1,851 @@
+---
+title: "Web Applications and Dashboards in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Introduction to Shiny
+
+Shiny is an R package for building interactive web applications.
+
+## Basic Shiny App Structure
+
+```{r}
+library(shiny)
+
+# UI (User Interface)
+ui <- fluidPage(
+  titlePanel("My First Shiny App"),
+
+  sidebarLayout(
+    sidebarPanel(
+      sliderInput("bins",
+                  "Number of bins:",
+                  min = 1,
+                  max = 50,
+                  value = 30)
+    ),
+
+    mainPanel(
+      plotOutput("distPlot")
+    )
+  )
+)
+
+# Server
+server <- function(input, output) {
+  output$distPlot <- renderPlot({
+    x <- faithful$waiting
+    bins <- seq(min(x), max(x), length.out = input$bins + 1)
+    hist(x, breaks = bins, col = "darkgray", border = "white")
+  })
+}
+
+# Run app
+shinyApp(ui = ui, server = server)
+```
+
+## File Structure
+
+```
+app_directory/
+├── app.R          # Single file app
+# OR
+├── ui.R           # UI definition
+├── server.R       # Server logic
+└── global.R       # (Optional) Global variables/functions
+```
+
+# 2. User Interface (UI)
+
+## Layout Functions
+
+```{r}
+# Fluid page
+ui <- fluidPage(
+  titlePanel("Title"),
+  sidebarLayout(
+    sidebarPanel(),
+    mainPanel()
+  )
+)
+
+# Navbar page
+ui <- navbarPage("App Title",
+  tabPanel("Plot",
+    # content
+  ),
+  tabPanel("Table",
+    # content
+  ),
+  tabPanel("About",
+    # content
+  )
+)
+
+# Fluid row
+ui <- fluidPage(
+  fluidRow(
+    column(4, # content),
+    column(8, # content)
+  )
+)
+
+# Tab panels
+ui <- fluidPage(
+  tabsetPanel(
+    tabPanel("Plot", plotOutput("plot")),
+    tabPanel("Summary", verbatimTextOutput("summary")),
+    tabPanel("Table", tableOutput("table"))
+  )
+)
+```
+
+## Input Widgets
+
+```{r}
+# Text input
+textInput("name", "Enter your name:")
+
+# Numeric input
+numericInput("age", "Enter age:", value = 25, min = 0, max = 120)
+
+# Slider
+sliderInput("slider", "Select value:", min = 0, max = 100, value = 50)
+
+# Select dropdown
+selectInput("choice", "Choose one:",
+            choices = c("Option 1", "Option 2", "Option 3"))
+
+# Multiple select
+selectInput("choices", "Choose multiple:",
+            choices = c("A", "B", "C"), multiple = TRUE)
+
+# Radio buttons
+radioButtons("radio", "Select one:",
+             choices = c("Yes", "No"))
+
+# Checkboxes
+checkboxGroupInput("checks", "Select all that apply:",
+                   choices = c("A", "B", "C"))
+
+# Single checkbox
+checkboxInput("agree", "I agree", value = FALSE)
+
+# Date input
+dateInput("date", "Select date:")
+
+# Date range
+dateRangeInput("dates", "Select date range:")
+
+# File upload
+fileInput("file", "Choose file:")
+
+# Action button
+actionButton("button", "Click me!")
+
+# Submit button
+submitButton("Submit")
+```
+
+## Output Functions
+
+```{r}
+# In UI
+plotOutput("plot")
+tableOutput("table")
+textOutput("text")
+verbatimTextOutput("summary")
+uiOutput("ui")  # Dynamic UI
+htmlOutput("html")
+
+# In server
+output$plot <- renderPlot({ ... })
+output$table <- renderTable({ ... })
+output$text <- renderText({ ... })
+output$summary <- renderPrint({ ... })
+output$ui <- renderUI({ ... })
+output$html <- renderUI({ HTML(...) })
+```
+
+# 3. Reactive Programming
+
+## Reactive Sources
+
+```{r}
+server <- function(input, output) {
+  # Input values are reactive
+  # They automatically trigger updates
+
+  output$text <- renderText({
+    paste("You entered:", input$name)
+  })
+}
+```
+
+## Reactive Expressions
+
+```{r}
+server <- function(input, output) {
+  # Reactive expression (caches result)
+  filtered_data <- reactive({
+    mtcars[mtcars$cyl == input$cyl, ]
+  })
+
+  # Use reactive expression
+  output$plot <- renderPlot({
+    plot(filtered_data()$wt, filtered_data()$mpg)
+  })
+
+  output$table <- renderTable({
+    filtered_data()
+  })
+}
+```
+
+## observe and observeEvent
+
+```{r}
+server <- function(input, output) {
+  # observe - runs when dependencies change
+  observe({
+    print(paste("Input changed to:", input$value))
+  })
+
+  # observeEvent - runs when specific event occurs
+  observeEvent(input$button, {
+    print("Button was clicked!")
+  })
+}
+```
+
+## isolate
+
+```{r}
+server <- function(input, output) {
+  # Prevent reactivity with isolate
+  observeEvent(input$button, {
+    # This only runs when button is clicked
+    # Not when input$value changes
+    value <- isolate(input$value)
+    print(value)
+  })
+}
+```
+
+## eventReactive
+
+```{r}
+server <- function(input, output) {
+  # Only update when button is clicked
+  data <- eventReactive(input$button, {
+    rnorm(input$n)
+  })
+
+  output$plot <- renderPlot({
+    hist(data())
+  })
+}
+```
+
+## reactiveValues
+
+```{r}
+server <- function(input, output) {
+  # Create reactive values object
+  values <- reactiveValues(
+    counter = 0,
+    data = NULL
+  )
+
+  # Update values
+  observeEvent(input$increment, {
+    values$counter <- values$counter + 1
+  })
+
+  # Use values
+  output$text <- renderText({
+    paste("Count:", values$counter)
+  })
+}
+```
+
+# 4. Advanced Shiny Features
+
+## Dynamic UI
+
+```{r}
+ui <- fluidPage(
+  selectInput("type", "Select type:", choices = c("Plot", "Table")),
+  uiOutput("dynamic_output")
+)
+
+server <- function(input, output) {
+  output$dynamic_output <- renderUI({
+    if (input$type == "Plot") {
+      plotOutput("plot")
+    } else {
+      tableOutput("table")
+    }
+  })
+
+  output$plot <- renderPlot({
+    plot(mtcars$wt, mtcars$mpg)
+  })
+
+  output$table <- renderTable({
+    mtcars
+  })
+}
+```
+
+## File Upload and Download
+
+```{r}
+ui <- fluidPage(
+  # Upload
+  fileInput("file", "Upload CSV:"),
+  tableOutput("contents"),
+
+  # Download
+  downloadButton("download", "Download data")
+)
+
+server <- function(input, output) {
+  # Upload
+  data <- reactive({
+    req(input$file)
+    read.csv(input$file$datapath)
+  })
+
+  output$contents <- renderTable({
+    data()
+  })
+
+  # Download
+  output$download <- downloadHandler(
+    filename = function() {
+      paste("data-", Sys.Date(), ".csv", sep = "")
+    },
+    content = function(file) {
+      write.csv(data(), file, row.names = FALSE)
+    }
+  )
+}
+```
+
+## Progress Indicators
+
+```{r}
+server <- function(input, output) {
+  output$plot <- renderPlot({
+    # Create progress indicator
+    withProgress(message = "Creating plot", value = 0, {
+      n <- 10
+      for (i in 1:n) {
+        incProgress(1/n, detail = paste("Step", i))
+        Sys.sleep(0.5)
+      }
+    })
+
+    plot(mtcars$wt, mtcars$mpg)
+  })
+}
+```
+
+## Modals
+
+```{r}
+ui <- fluidPage(
+  actionButton("show", "Show modal")
+)
+
+server <- function(input, output) {
+  observeEvent(input$show, {
+    showModal(modalDialog(
+      title = "Important message",
+      "This is an important message!",
+      easyClose = TRUE,
+      footer = modalButton("Close")
+    ))
+  })
+}
+```
+
+## Notifications
+
+```{r}
+server <- function(input, output) {
+  observeEvent(input$button, {
+    showNotification("Process complete!", type = "message")
+    # Types: "message", "warning", "error"
+  })
+}
+```
+
+# 5. Shiny Modules
+
+Modules make code reusable and maintainable.
+
+```{r}
+# Module UI
+histogramUI <- function(id) {
+  ns <- NS(id)
+  tagList(
+    sliderInput(ns("bins"), "Number of bins:", 1, 50, 30),
+    plotOutput(ns("plot"))
+  )
+}
+
+# Module server
+histogramServer <- function(id, data) {
+  moduleServer(id, function(input, output, session) {
+    output$plot <- renderPlot({
+      hist(data(), breaks = input$bins)
+    })
+  })
+}
+
+# Use module in app
+ui <- fluidPage(
+  histogramUI("hist1"),
+  histogramUI("hist2")
+)
+
+server <- function(input, output) {
+  data1 <- reactive({ rnorm(100) })
+  data2 <- reactive({ rnorm(100, mean = 10) })
+
+  histogramServer("hist1", data1)
+  histogramServer("hist2", data2)
+}
+```
+
+# 6. Shiny Themes and Styling
+
+## shinythemes
+
+```{r}
+library(shinythemes)
+
+ui <- fluidPage(
+  theme = shinytheme("cerulean"),
+  # Or: "darkly", "flatly", "journal", "readable", "spacelab", etc.
+  titlePanel("Themed App")
+)
+```
+
+## bslib
+
+```{r}
+library(bslib)
+
+ui <- fluidPage(
+  theme = bs_theme(
+    bg = "#FFFFFF",
+    fg = "#000000",
+    primary = "#0199F8",
+    base_font = font_google("Inter")
+  ),
+  titlePanel("Custom Theme")
+)
+```
+
+## Custom CSS
+
+```{r}
+ui <- fluidPage(
+  tags$head(
+    tags$style(HTML("
+      .custom-class {
+        color: blue;
+        font-size: 20px;
+      }
+    "))
+  ),
+  div(class = "custom-class", "Styled text")
+)
+```
+
+# 7. Interactive Visualizations
+
+## plotly
+
+```{r}
+library(plotly)
+
+ui <- fluidPage(
+  plotlyOutput("plot")
+)
+
+server <- function(input, output) {
+  output$plot <- renderPlotly({
+    plot_ly(mtcars, x = ~wt, y = ~mpg, type = "scatter", mode = "markers")
+  })
+}
+```
+
+## DT (DataTables)
+
+```{r}
+library(DT)
+
+ui <- fluidPage(
+  DTOutput("table")
+)
+
+server <- function(input, output) {
+  output$table <- renderDT({
+    datatable(mtcars,
+              options = list(pageLength = 10),
+              filter = "top",
+              selection = "multiple")
+  })
+
+  # Get selected rows
+  observeEvent(input$table_rows_selected, {
+    selected <- input$table_rows_selected
+    print(mtcars[selected, ])
+  })
+}
+```
+
+## leaflet (Maps)
+
+```{r}
+library(leaflet)
+
+ui <- fluidPage(
+  leafletOutput("map")
+)
+
+server <- function(input, output) {
+  output$map <- renderLeaflet({
+    leaflet() %>%
+      addTiles() %>%
+      addMarkers(lng = -73.935242, lat = 40.730610,
+                 popup = "New York City")
+  })
+}
+```
+
+# 8. Shiny Dashboards
+
+## shinydashboard
+
+```{r}
+library(shinydashboard)
+
+ui <- dashboardPage(
+  dashboardHeader(title = "Dashboard"),
+
+  dashboardSidebar(
+    sidebarMenu(
+      menuItem("Dashboard", tabName = "dashboard", icon = icon("dashboard")),
+      menuItem("Data", tabName = "data", icon = icon("table"))
+    )
+  ),
+
+  dashboardBody(
+    tabItems(
+      tabItem(tabName = "dashboard",
+        fluidRow(
+          valueBox(10 * 2, "New Orders", icon = icon("shopping-cart")),
+          valueBox(100, "Approval Rating", icon = icon("thumbs-up"), color = "green"),
+          infoBox("Progress", "70%", icon = icon("chart-line"), color = "purple")
+        ),
+        fluidRow(
+          box(
+            title = "Histogram",
+            status = "primary",
+            solidHeader = TRUE,
+            plotOutput("plot1")
+          ),
+          box(
+            title = "Controls",
+            status = "warning",
+            sliderInput("slider", "Number of observations:", 1, 100, 50)
+          )
+        )
+      ),
+      tabItem(tabName = "data",
+        tableOutput("table")
+      )
+    )
+  )
+)
+
+server <- function(input, output) {
+  output$plot1 <- renderPlot({
+    hist(rnorm(input$slider))
+  })
+
+  output$table <- renderTable({
+    head(mtcars)
+  })
+}
+
+shinyApp(ui, server)
+```
+
+# 9. flexdashboard
+
+```{r}
+---
+title: "My Dashboard"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(ggplot2)
+```
+
+Row {data-height=200}
+-----------------------------------------------------------------------
+
+### Chart A
+
+```{r}
+valueBox(42, icon = "fa-pencil")
+```
+
+### Chart B
+
+```{r}
+gauge(91, min = 0, max = 100, symbol = '%', gaugeSectors(
+  success = c(80, 100), warning = c(40, 79), danger = c(0, 39)
+))
+```
+
+Row
+-----------------------------------------------------------------------
+
+### Chart C
+
+```{r}
+renderPlot({
+  ggplot(mtcars, aes(wt, mpg)) + geom_point()
+})
+```
+
+### Chart D
+
+```{r}
+renderTable({
+  head(mtcars)
+})
+```
+```
+
+# 10. Deployment
+
+## Local Deployment
+
+```{r}
+# Run from R
+shiny::runApp("app_directory")
+
+# Specify port
+shiny::runApp("app_directory", port = 8080)
+```
+
+## shinyapps.io
+
+```{r}
+library(rsconnect)
+
+# Set account
+rsconnect::setAccountInfo(
+  name = "your_account",
+  token = "your_token",
+  secret = "your_secret"
+)
+
+# Deploy
+rsconnect::deployApp("app_directory")
+
+# Update
+rsconnect::deployApp("app_directory", forceUpdate = TRUE)
+```
+
+## Shiny Server (Open Source)
+
+```bash
+# Install Shiny Server on Ubuntu
+sudo apt-get install gdebi-core
+wget https://download3.rstudio.org/ubuntu-18.04/x86_64/shiny-server-xxx.deb
+sudo gdebi shiny-server-xxx.deb
+
+# Apps go in: /srv/shiny-server/
+# Logs in: /var/log/shiny-server/
+```
+
+## Docker
+
+```dockerfile
+FROM rocker/shiny:latest
+
+# Install R packages
+RUN R -e "install.packages(c('shiny', 'ggplot2', 'dplyr'))"
+
+# Copy app
+COPY ./app /srv/shiny-server/app
+
+# Expose port
+EXPOSE 3838
+
+# Run
+CMD ["/usr/bin/shiny-server"]
+```
+
+# 11. Performance Optimization
+
+## Caching
+
+```{r}
+server <- function(input, output) {
+  # Cache expensive computations
+  expensive_data <- reactive({
+    # This only reruns when input$file changes
+    read.csv(input$file$datapath)
+  }) %>% bindCache(input$file)
+}
+```
+
+## Async Processing
+
+```{r}
+library(promises)
+library(future)
+plan(multisession)
+
+server <- function(input, output) {
+  output$plot <- renderPlot({
+    future({
+      # Long computation in background
+      Sys.sleep(5)
+      mtcars
+    }) %...>% {
+      plot(.$wt, .$mpg)
+    }
+  })
+}
+```
+
+## Debouncing and Throttling
+
+```{r}
+server <- function(input, output) {
+  # Debounce - wait for pause in input
+  debounced_value <- debounce(reactive(input$text), 1000)
+
+  # Throttle - limit update frequency
+  throttled_value <- throttle(reactive(input$slider), 1000)
+
+  output$text <- renderText({
+    debounced_value()
+  })
+}
+```
+
+# 12. Testing Shiny Apps
+
+## shinytest
+
+```{r}
+library(shinytest)
+
+# Record test
+recordTest("app_directory")
+
+# Run tests
+testApp("app_directory")
+
+# In testthat
+library(testthat)
+test_that("app works", {
+  app <- ShinyDriver$new("app_directory")
+  app$setInputs(bins = 30)
+  output <- app$getValue(name = "distPlot")
+  expect_true(!is.null(output))
+})
+```
+
+# Summary
+
+This document covered web applications and dashboards:
+
+**Shiny Basics**:
+- UI and server structure
+- Inputs and outputs
+- Layouts
+
+**Reactive Programming**:
+- Reactive expressions
+- observe/observeEvent
+- isolate, eventReactive
+- reactiveValues
+
+**Advanced Features**:
+- Dynamic UI
+- File upload/download
+- Progress, modals, notifications
+- Modules for reusability
+
+**Styling**:
+- shinythemes
+- bslib
+- Custom CSS
+
+**Interactive Visualizations**:
+- plotly
+- DT (DataTables)
+- leaflet (maps)
+
+**Dashboards**:
+- shinydashboard
+- flexdashboard
+
+**Deployment**:
+- shinyapps.io
+- Shiny Server
+- Docker
+
+**Performance**:
+- Caching
+- Async processing
+- Debouncing/throttling
+
+**Testing**:
+- shinytest
+- testthat integration
+
+**Best Practices**:
+- Modularize code
+- Optimize reactivity
+- Test thoroughly
+- Document well
+
+**Next Steps**: Proceed to Reporting and Communication for creating professional tables and figures.
+
+# References
+
+- [Mastering Shiny](https://mastering-shiny.org/)
+- [Shiny Documentation](https://shiny.rstudio.com/)
+- [shinydashboard](https://rstudio.github.io/shinydashboard/)
+- [flexdashboard](https://pkgs.rstudio.com/flexdashboard/)

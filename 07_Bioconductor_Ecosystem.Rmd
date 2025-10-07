@@ -1,0 +1,766 @@
+---
+title: "Bioconductor Ecosystem"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Introduction to Bioconductor
+
+Bioconductor is an open-source software project providing tools for bioinformatics and computational biology in R.
+
+## Installation
+
+```{r}
+# Install BiocManager
+if (!require("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+
+# Install Bioconductor packages
+BiocManager::install("GenomicRanges")
+BiocManager::install(c("DESeq2", "edgeR", "limma"))
+
+# Check Bioconductor version
+BiocManager::version()
+
+# Update packages
+BiocManager::install()
+```
+
+## Core Packages
+
+```{r}
+# Essential packages
+BiocManager::install(c(
+  "Biostrings",        # Sequence manipulation
+  "GenomicRanges",     # Genomic intervals
+  "GenomicFeatures",   # Gene annotations
+  "SummarizedExperiment", # Data containers
+  "rtracklayer",       # Import/export genomic data
+  "AnnotationDbi",     # Annotation databases
+  "biomaRt"            # BioMart queries
+))
+```
+
+# 2. Core Data Structures
+
+## GenomicRanges
+
+```{r}
+library(GenomicRanges)
+
+# Create GRanges object
+gr <- GRanges(
+  seqnames = c("chr1", "chr1", "chr2"),
+  ranges = IRanges(start = c(100, 200, 300), end = c(150, 250, 350)),
+  strand = c("+", "-", "+"),
+  score = c(5, 7, 3),
+  gene_id = c("gene1", "gene2", "gene3")
+)
+gr
+
+# Access components
+seqnames(gr)
+ranges(gr)
+start(gr)
+end(gr)
+width(gr)
+strand(gr)
+mcols(gr)  # Metadata columns
+
+# Subsetting
+gr[1]
+gr[strand(gr) == "+"]
+
+# Extend ranges
+resize(gr, width = 100)
+flank(gr, width = 50)
+promoters(gr, upstream = 2000, downstream = 200)
+
+# Operations
+shift(gr, 10)  # Shift positions
+narrow(gr, start = 10, end = -10)  # Narrow ranges
+```
+
+## IRanges
+
+```{r}
+library(IRanges)
+
+# Create interval ranges
+ir <- IRanges(start = c(1, 5, 10), end = c(4, 8, 15))
+ir
+
+# Properties
+start(ir)
+end(ir)
+width(ir)
+
+# Operations
+reduce(ir)  # Merge overlapping ranges
+disjoin(ir)  # Create disjoint ranges
+gaps(ir)  # Find gaps between ranges
+coverage(ir)  # Coverage vector
+```
+
+## GRangesList
+
+```{r}
+# List of GRanges (e.g., exons per transcript)
+grl <- GRangesList(
+  gene1 = GRanges("chr1", IRanges(c(100, 200, 300), c(150, 250, 350))),
+  gene2 = GRanges("chr2", IRanges(c(400, 500), c(450, 550)))
+)
+grl
+
+# Access
+grl[[1]]
+grl$gene1
+
+# Operations
+unlist(grl)  # Flatten to GRanges
+```
+
+## Range Operations
+
+```{r}
+gr1 <- GRanges("chr1", IRanges(c(1, 5, 10), c(4, 8, 15)))
+gr2 <- GRanges("chr1", IRanges(c(3, 7, 12), c(6, 9, 16)))
+
+# Find overlaps
+findOverlaps(gr1, gr2)
+countOverlaps(gr1, gr2)
+subsetByOverlaps(gr1, gr2)
+
+# Set operations
+union(gr1, gr2)
+intersect(gr1, gr2)
+setdiff(gr1, gr2)
+
+# Distance
+distance(gr1, gr2)
+distanceToNearest(gr1, gr2)
+
+# Nearest features
+nearest(gr1, gr2)
+precede(gr1, gr2)
+follow(gr1, gr2)
+```
+
+## SummarizedExperiment
+
+```{r}
+library(SummarizedExperiment)
+
+# Create SummarizedExperiment
+counts <- matrix(rpois(100, lambda = 10), nrow = 10, ncol = 10)
+rownames(counts) <- paste0("Gene", 1:10)
+colnames(counts) <- paste0("Sample", 1:10)
+
+rowData <- GRanges("chr1", IRanges(seq(100, 1000, length.out = 10),
+                                   width = 50))
+colData <- DataFrame(
+  condition = rep(c("Control", "Treatment"), each = 5),
+  batch = rep(1:2, 5)
+)
+
+se <- SummarizedExperiment(
+  assays = list(counts = counts),
+  rowRanges = rowData,
+  colData = colData
+)
+se
+
+# Access
+assay(se)
+assay(se, "counts")
+rowRanges(se)
+colData(se)
+
+# Subset
+se[1:5, 1:5]
+se[, se$condition == "Control"]
+```
+
+# 3. Sequence Analysis
+
+## Biostrings
+
+```{r}
+library(Biostrings)
+
+# DNA sequences
+dna <- DNAString("ATCGATCGATCG")
+dna
+
+# Multiple sequences
+dna_set <- DNAStringSet(c("ATCG", "GCTA", "TTAA"))
+dna_set
+
+# Basic operations
+length(dna)
+width(dna_set)
+reverseComplement(dna)
+translate(dna)
+
+# Pattern matching
+matchPattern("ATG", dna)
+countPattern("AT", dna)
+
+# GC content
+letterFrequency(dna, "GC", as.prob = TRUE)
+
+# Read FASTA
+# sequences <- readDNAStringSet("sequences.fasta")
+# writeXStringSet(sequences, "output.fasta")
+```
+
+## BSgenome
+
+```{r}
+library(BSgenome)
+
+# Available genomes
+# available.genomes()
+
+# Load human genome
+library(BSgenome.Hsapiens.UCSC.hg38)
+genome <- BSgenome.Hsapiens.UCSC.hg38
+
+# Get sequence
+getSeq(genome, GRanges("chr1", IRanges(1000, 2000)))
+
+# Multiple regions
+regions <- GRanges(c("chr1", "chr2"), IRanges(c(1000, 2000), c(1100, 2100)))
+getSeq(genome, regions)
+```
+
+# 4. Gene Annotation
+
+## GenomicFeatures
+
+```{r}
+library(GenomicFeatures)
+
+# Load annotation from GTF
+# txdb <- makeTxDbFromGFF("genes.gtf", format = "gtf")
+
+# Or use pre-built annotations
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+
+# Extract features
+genes_gr <- genes(txdb)
+transcripts_gr <- transcripts(txdb)
+exons_gr <- exons(txdb)
+cds_gr <- cds(txdb)
+
+# Exons by gene
+exonsByGene <- exonsBy(txdb, by = "gene")
+
+# Introns
+intronsByTranscript <- intronsByTranscript(txdb)
+
+# 5' and 3' UTRs
+fiveUTRsByTranscript <- fiveUTRsByTranscript(txdb)
+threeUTRsByTranscript <- threeUTRsByTranscript(txdb)
+
+# Promoters
+promoters(txdb, upstream = 2000, downstream = 200)
+```
+
+## AnnotationDbi
+
+```{r}
+library(AnnotationDbi)
+library(org.Hs.eg.db)
+
+# Available keys
+keytypes(org.Hs.eg.db)
+
+# Gene symbols to Entrez IDs
+symbols <- c("TP53", "BRCA1", "EGFR")
+select(org.Hs.eg.db, keys = symbols, columns = c("ENTREZID", "ENSEMBL"),
+       keytype = "SYMBOL")
+
+# Map between identifiers
+mapIds(org.Hs.eg.db, keys = symbols, column = "ENTREZID", keytype = "SYMBOL")
+
+# Get gene information
+genes_info <- select(org.Hs.eg.db,
+                     keys = symbols,
+                     columns = c("ENTREZID", "GENENAME", "CHR"),
+                     keytype = "SYMBOL")
+genes_info
+```
+
+## biomaRt
+
+```{r}
+library(biomaRt)
+
+# List marts
+# listMarts()
+
+# Connect to Ensembl
+mart <- useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+
+# Available attributes
+# listAttributes(mart)
+
+# Available filters
+# listFilters(mart)
+
+# Query
+genes <- c("ENSG00000141510", "ENSG00000012048")
+getBM(attributes = c("ensembl_gene_id", "hgnc_symbol", "chromosome_name",
+                     "start_position", "end_position"),
+      filters = "ensembl_gene_id",
+      values = genes,
+      mart = mart)
+
+# Get sequences
+# getSequence(id = genes, type = "ensembl_gene_id", seqType = "gene_exon", mart = mart)
+```
+
+# 5. RNA-seq Analysis
+
+## DESeq2
+
+```{r}
+library(DESeq2)
+
+# Create count matrix (genes × samples)
+counts <- matrix(rpois(1000, lambda = 10), nrow = 100, ncol = 10)
+rownames(counts) <- paste0("Gene", 1:100)
+colnames(counts) <- paste0("Sample", 1:10)
+
+# Sample information
+coldata <- data.frame(
+  condition = factor(rep(c("Control", "Treatment"), each = 5)),
+  row.names = colnames(counts)
+)
+
+# Create DESeq2 object
+dds <- DESeqDataSetFromMatrix(countData = counts,
+                               colData = coldata,
+                               design = ~ condition)
+
+# Run DESeq2 pipeline
+dds <- DESeq(dds)
+
+# Get results
+res <- results(dds, contrast = c("condition", "Treatment", "Control"))
+res
+
+# Order by p-value
+res_ordered <- res[order(res$padj), ]
+
+# Extract significant genes
+sig_genes <- subset(res, padj < 0.05 & abs(log2FoldChange) > 1)
+
+# Visualization
+plotMA(res)
+plotCounts(dds, gene = rownames(res)[1], intgroup = "condition")
+
+# Volcano plot
+library(ggplot2)
+res_df <- as.data.frame(res)
+ggplot(res_df, aes(x = log2FoldChange, y = -log10(padj))) +
+  geom_point(aes(color = padj < 0.05 & abs(log2FoldChange) > 1)) +
+  theme_minimal()
+
+# PCA plot
+vsd <- vst(dds, blind = FALSE)
+plotPCA(vsd, intgroup = "condition")
+
+# Heatmap of top genes
+library(pheatmap)
+top_genes <- head(order(res$padj), 20)
+pheatmap(assay(vsd)[top_genes, ],
+         annotation_col = as.data.frame(colData(dds)["condition"]),
+         scale = "row")
+```
+
+## edgeR
+
+```{r}
+library(edgeR)
+
+# Create DGEList object
+y <- DGEList(counts = counts, group = coldata$condition)
+
+# Filter low-count genes
+keep <- filterByExpr(y)
+y <- y[keep, , keep.lib.sizes = FALSE]
+
+# Normalization
+y <- calcNormFactors(y)
+
+# Design matrix
+design <- model.matrix(~ condition, data = coldata)
+
+# Estimate dispersion
+y <- estimateDisp(y, design)
+
+# Fit model
+fit <- glmQLFit(y, design)
+
+# Differential expression test
+qlf <- glmQLFTest(fit, coef = 2)
+
+# Top genes
+topTags(qlf)
+
+# Extract results
+results_edgeR <- as.data.frame(topTags(qlf, n = Inf))
+```
+
+## limma-voom
+
+```{r}
+library(limma)
+
+# Design matrix
+design <- model.matrix(~ condition, data = coldata)
+
+# Create DGEList
+y <- DGEList(counts = counts)
+
+# Filter and normalize
+keep <- filterByExpr(y, design)
+y <- y[keep, , keep.lib.sizes = FALSE]
+y <- calcNormFactors(y)
+
+# Voom transformation
+v <- voom(y, design, plot = TRUE)
+
+# Fit linear model
+fit <- lmFit(v, design)
+fit <- eBayes(fit)
+
+# Extract results
+results_limma <- topTable(fit, coef = 2, n = Inf)
+```
+
+# 6. ChIP-seq and Peak Analysis
+
+## DiffBind
+
+```{r}
+library(DiffBind)
+
+# Read sample sheet
+# samples <- dba(sampleSheet = "samples.csv")
+
+# Count reads in peaks
+# samples <- dba.count(samples)
+
+# Establish contrast
+# samples <- dba.contrast(samples, categories = DBA_CONDITION)
+
+# Differential binding analysis
+# samples <- dba.analyze(samples)
+
+# Get results
+# results <- dba.report(samples)
+
+# Visualization
+# dba.plotPCA(samples)
+# dba.plotHeatmap(samples)
+```
+
+## ChIPseeker
+
+```{r}
+library(ChIPseeker)
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+# Read peaks
+# peaks <- readPeakFile("peaks.bed")
+
+# Annotate peaks
+# peakAnno <- annotatePeak(peaks, tssRegion = c(-3000, 3000),
+#                          TxDb = TxDb.Hsapiens.UCSC.hg38.knownGene)
+
+# Visualize
+# plotAnnoPie(peakAnno)
+# plotDistToTSS(peakAnno)
+```
+
+# 7. Single-Cell RNA-seq
+
+## Seurat
+
+```{r}
+library(Seurat)
+
+# Create Seurat object
+# counts <- Read10X("filtered_gene_bc_matrices/hg38/")
+# seurat_obj <- CreateSeuratObject(counts = counts, project = "sample")
+
+# Standard workflow
+# seurat_obj <- NormalizeData(seurat_obj)
+# seurat_obj <- FindVariableFeatures(seurat_obj)
+# seurat_obj <- ScaleData(seurat_obj)
+# seurat_obj <- RunPCA(seurat_obj)
+# seurat_obj <- FindNeighbors(seurat_obj, dims = 1:10)
+# seurat_obj <- FindClusters(seurat_obj, resolution = 0.5)
+# seurat_obj <- RunUMAP(seurat_obj, dims = 1:10)
+
+# Visualization
+# DimPlot(seurat_obj, reduction = "umap")
+# FeaturePlot(seurat_obj, features = c("CD3D", "CD8A"))
+
+# Find markers
+# markers <- FindAllMarkers(seurat_obj)
+# top10 <- markers %>% group_by(cluster) %>% top_n(10, avg_log2FC)
+# DoHeatmap(seurat_obj, features = top10$gene)
+```
+
+## SingleCellExperiment
+
+```{r}
+library(SingleCellExperiment)
+
+# Create SCE object
+counts <- matrix(rpois(1000, lambda = 5), nrow = 100, ncol = 10)
+sce <- SingleCellExperiment(assays = list(counts = counts))
+
+# Add cell metadata
+colData(sce)$cellType <- sample(c("TypeA", "TypeB"), 10, replace = TRUE)
+
+# Add gene metadata
+rowData(sce)$geneSymbol <- paste0("Gene", 1:100)
+
+# Reduced dimensions
+reducedDim(sce, "PCA") <- matrix(rnorm(20), nrow = 10, ncol = 2)
+
+# Access
+assay(sce, "counts")
+colData(sce)
+rowData(sce)
+reducedDim(sce, "PCA")
+```
+
+# 8. Variant Calling and Analysis
+
+## VariantAnnotation
+
+```{r}
+library(VariantAnnotation)
+
+# Read VCF
+# vcf <- readVcf("variants.vcf", "hg38")
+
+# Access components
+# rowRanges(vcf)  # Genomic positions
+# ref(vcf)  # Reference alleles
+# alt(vcf)  # Alternate alleles
+# info(vcf)  # Info fields
+# geno(vcf)  # Genotype data
+
+# Filter variants
+# vcf_filtered <- vcf[qual(vcf) > 30]
+
+# Write VCF
+# writeVcf(vcf, "output.vcf")
+```
+
+# 9. Pathway and Gene Set Enrichment
+
+## clusterProfiler
+
+```{r}
+library(clusterProfiler)
+library(org.Hs.eg.db)
+
+# Gene list (Entrez IDs)
+genes <- c("1", "2", "3", "4", "5")  # Example
+
+# GO enrichment
+ego <- enrichGO(gene = genes,
+                OrgDb = org.Hs.eg.db,
+                keyType = "ENTREZID",
+                ont = "BP",  # Biological Process
+                pAdjustMethod = "BH",
+                pvalueCutoff = 0.05,
+                qvalueCutoff = 0.05)
+
+# View results
+head(ego)
+
+# Visualization
+# dotplot(ego)
+# barplot(ego)
+# enrichMap(ego)
+
+# KEGG enrichment
+# keg <- enrichKEGG(gene = genes,
+#                   organism = "hsa",
+#                   pvalueCutoff = 0.05)
+
+# GSEA (Gene Set Enrichment Analysis)
+# Ranked gene list
+gene_list <- sort(rnorm(1000), decreasing = TRUE)
+names(gene_list) <- paste0("Gene", 1:1000)
+
+# gseGO(geneList = gene_list,
+#       OrgDb = org.Hs.eg.db,
+#       ont = "BP",
+#       pvalueCutoff = 0.05)
+```
+
+## fgsea
+
+```{r}
+library(fgsea)
+
+# Ranked gene list
+ranks <- sort(rnorm(1000), decreasing = TRUE)
+names(ranks) <- paste0("Gene", 1:1000)
+
+# Gene sets (pathways)
+pathways <- list(
+  pathway1 = paste0("Gene", 1:50),
+  pathway2 = paste0("Gene", 51:100),
+  pathway3 = paste0("Gene", 101:150)
+)
+
+# Run GSEA
+fgsea_results <- fgsea(pathways = pathways,
+                       stats = ranks,
+                       minSize = 15,
+                       maxSize = 500)
+
+fgsea_results
+
+# Visualization
+# plotEnrichment(pathways[[1]], ranks)
+```
+
+# 10. Import/Export Genomic Data
+
+## rtracklayer
+
+```{r}
+library(rtracklayer)
+
+# Import BED
+# bed <- import.bed("regions.bed")
+
+# Import GTF/GFF
+# gtf <- import.gff("genes.gtf")
+
+# Import BigWig
+# bw <- import.bw("coverage.bw")
+
+# Export GRanges to BED
+# export.bed(gr, "output.bed")
+
+# Export to GTF
+# export.gff(gr, "output.gtf")
+
+# Export to BigWig
+# export.bw(gr, "output.bw")
+
+# Generic import/export
+# data <- import("file.bed", format = "bed")
+# export(gr, "output.bed", format = "bed")
+```
+
+# 11. Genomic Visualization
+
+## Gviz
+
+```{r}
+library(Gviz)
+
+# Genome axis
+gtrack <- GenomeAxisTrack()
+
+# Gene model track
+# data(geneModels)
+# grtrack <- GeneRegionTrack(geneModels, genome = "hg19", chromosome = "chr7",
+#                           name = "Genes")
+
+# Data track
+# dtrack <- DataTrack(range = gr, data = "score", chromosome = "chr1",
+#                    genome = "hg38", name = "Coverage")
+
+# Plot tracks
+# plotTracks(list(gtrack, grtrack, dtrack), from = 1000, to = 10000)
+```
+
+## karyoploteR
+
+```{r}
+library(karyoploteR)
+
+# Create ideogram
+# kp <- plotKaryotype(genome = "hg38")
+
+# Add data
+# kpPoints(kp, data = gr, y = gr$score)
+# kpPlotRegions(kp, data = gr)
+```
+
+# Summary
+
+This document covered the Bioconductor ecosystem:
+
+**Core Data Structures**:
+- GRanges, IRanges, GRangesList
+- SummarizedExperiment
+
+**Sequence Analysis**:
+- Biostrings, BSgenome
+
+**Gene Annotation**:
+- GenomicFeatures, AnnotationDbi, biomaRt
+
+**RNA-seq**:
+- DESeq2, edgeR, limma-voom
+
+**ChIP-seq**:
+- DiffBind, ChIPseeker
+
+**Single-Cell**:
+- Seurat, SingleCellExperiment
+
+**Variant Analysis**:
+- VariantAnnotation
+
+**Pathway Analysis**:
+- clusterProfiler, fgsea
+
+**Visualization**:
+- Gviz, karyoploteR
+
+**Import/Export**:
+- rtracklayer
+
+**Key Principles**:
+- Use appropriate data structures
+- Leverage existing annotations
+- Follow standard workflows
+- Document analysis thoroughly
+
+**Next Steps**: Proceed to Machine Learning for predictive modeling and classification.
+
+# References
+
+- [Bioconductor](https://bioconductor.org/)
+- [Bioconductor Workflows](https://bioconductor.org/packages/release/BiocViews.html#___Workflow)
+- [Orchestrating Single-Cell Analysis with Bioconductor](https://osca.bioconductor.org/)
+- [RNA-seq analysis with DESeq2](http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)

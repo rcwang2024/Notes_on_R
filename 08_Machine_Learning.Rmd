@@ -1,0 +1,768 @@
+---
+title: "Machine Learning in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(ggplot2)
+```
+
+# 1. Introduction to Machine Learning in R
+
+Machine learning can be divided into:
+- **Supervised Learning**: Classification and Regression
+- **Unsupervised Learning**: Clustering and Dimensionality Reduction
+- **Semi-supervised and Reinforcement Learning**
+
+# 2. Data Preparation
+
+## Train-Test Split
+
+```{r}
+# Load example dataset
+data(iris)
+
+# Set seed for reproducibility
+set.seed(123)
+
+# Simple random split
+train_indices <- sample(1:nrow(iris), 0.7 * nrow(iris))
+train_data <- iris[train_indices, ]
+test_data <- iris[-train_indices, ]
+
+# Using caret
+library(caret)
+train_index <- createDataPartition(iris$Species, p = 0.7, list = FALSE)
+train_data <- iris[train_index, ]
+test_data <- iris[-train_index, ]
+```
+
+## Feature Scaling
+
+```{r}
+# Normalization (0-1 range)
+normalize <- function(x) {
+  return((x - min(x)) / (max(x) - min(x)))
+}
+iris_normalized <- as.data.frame(lapply(iris[, 1:4], normalize))
+
+# Standardization (z-score)
+iris_scaled <- as.data.frame(scale(iris[, 1:4]))
+
+# Using caret
+preproc <- preProcess(iris[, 1:4], method = c("center", "scale"))
+iris_processed <- predict(preproc, iris[, 1:4])
+```
+
+## Handling Missing Values
+
+```{r}
+# Create data with missing values
+data_na <- iris
+data_na[sample(1:150, 10), 1] <- NA
+
+# Remove rows with NA
+data_complete <- na.omit(data_na)
+
+# Impute with mean
+data_na$Sepal.Length[is.na(data_na$Sepal.Length)] <-
+  mean(data_na$Sepal.Length, na.rm = TRUE)
+
+# Impute with caret
+library(caret)
+preproc <- preProcess(data_na[, 1:4], method = "medianImpute")
+data_imputed <- predict(preproc, data_na[, 1:4])
+```
+
+# 3. Supervised Learning - Classification
+
+## Logistic Regression
+
+```{r}
+# Binary classification
+iris_binary <- iris[iris$Species != "setosa", ]
+iris_binary$Species <- droplevels(iris_binary$Species)
+
+# Fit model
+logit_model <- glm(Species ~ Sepal.Length + Sepal.Width,
+                   data = iris_binary, family = binomial)
+summary(logit_model)
+
+# Predictions
+predictions <- predict(logit_model, type = "response")
+predicted_class <- ifelse(predictions > 0.5, "virginica", "versicolor")
+
+# Confusion matrix
+table(Predicted = predicted_class, Actual = iris_binary$Species)
+
+# Accuracy
+mean(predicted_class == iris_binary$Species)
+```
+
+## K-Nearest Neighbors (KNN)
+
+```{r}
+library(class)
+
+# Prepare data
+train_features <- train_data[, 1:4]
+test_features <- test_data[, 1:4]
+train_labels <- train_data$Species
+test_labels <- test_data$Species
+
+# KNN classification
+knn_pred <- knn(train = train_features,
+                test = test_features,
+                cl = train_labels,
+                k = 5)
+
+# Confusion matrix
+table(Predicted = knn_pred, Actual = test_labels)
+
+# Accuracy
+mean(knn_pred == test_labels)
+
+# Try different k values
+accuracy_k <- sapply(1:20, function(k) {
+  pred <- knn(train_features, test_features, train_labels, k = k)
+  mean(pred == test_labels)
+})
+
+# Plot
+plot(1:20, accuracy_k, type = "b", xlab = "k", ylab = "Accuracy")
+```
+
+## Decision Trees
+
+```{r}
+library(rpart)
+library(rpart.plot)
+
+# Fit decision tree
+tree_model <- rpart(Species ~ ., data = train_data, method = "class")
+
+# Visualize tree
+rpart.plot(tree_model)
+
+# Predictions
+tree_pred <- predict(tree_model, test_data, type = "class")
+
+# Confusion matrix
+confusionMatrix(tree_pred, test_data$Species)
+
+# Variable importance
+tree_model$variable.importance
+```
+
+## Random Forest
+
+```{r}
+library(randomForest)
+
+# Fit random forest
+rf_model <- randomForest(Species ~ ., data = train_data, ntree = 500)
+print(rf_model)
+
+# Predictions
+rf_pred <- predict(rf_model, test_data)
+
+# Confusion matrix
+confusionMatrix(rf_pred, test_data$Species)
+
+# Variable importance
+importance(rf_model)
+varImpPlot(rf_model)
+
+# Tune mtry parameter
+tuned_rf <- tuneRF(train_data[, -5], train_data$Species,
+                   stepFactor = 1.5, improve = 0.01, ntree = 500)
+```
+
+## Support Vector Machines (SVM)
+
+```{r}
+library(e1071)
+
+# Fit SVM
+svm_model <- svm(Species ~ ., data = train_data, kernel = "radial")
+
+# Predictions
+svm_pred <- predict(svm_model, test_data)
+
+# Confusion matrix
+confusionMatrix(svm_pred, test_data$Species)
+
+# Tune parameters
+svm_tune <- tune(svm, Species ~ ., data = train_data,
+                 ranges = list(cost = c(0.1, 1, 10),
+                              gamma = c(0.1, 1, 10)))
+print(svm_tune)
+
+# Best model
+best_svm <- svm_tune$best.model
+svm_pred_tuned <- predict(best_svm, test_data)
+confusionMatrix(svm_pred_tuned, test_data$Species)
+```
+
+## Naive Bayes
+
+```{r}
+library(e1071)
+
+# Fit Naive Bayes
+nb_model <- naiveBayes(Species ~ ., data = train_data)
+
+# Predictions
+nb_pred <- predict(nb_model, test_data)
+
+# Confusion matrix
+confusionMatrix(nb_pred, test_data$Species)
+```
+
+## Gradient Boosting (XGBoost)
+
+```{r}
+library(xgboost)
+
+# Prepare data for xgboost (requires numeric matrix)
+train_matrix <- model.matrix(Species ~ . - 1, data = train_data)
+train_label <- as.numeric(train_data$Species) - 1
+
+test_matrix <- model.matrix(Species ~ . - 1, data = test_data)
+test_label <- as.numeric(test_data$Species) - 1
+
+# Create DMatrix
+dtrain <- xgb.DMatrix(data = train_matrix, label = train_label)
+dtest <- xgb.DMatrix(data = test_matrix, label = test_label)
+
+# Set parameters
+params <- list(
+  objective = "multi:softmax",
+  num_class = 3,
+  max_depth = 6,
+  eta = 0.3
+)
+
+# Train model
+xgb_model <- xgb.train(params = params, data = dtrain, nrounds = 100)
+
+# Predictions
+xgb_pred <- predict(xgb_model, dtest)
+
+# Confusion matrix
+table(Predicted = xgb_pred, Actual = test_label)
+
+# Feature importance
+importance_matrix <- xgb.importance(colnames(train_matrix), model = xgb_model)
+xgb.plot.importance(importance_matrix)
+```
+
+# 4. Supervised Learning - Regression
+
+## Linear Regression
+
+```{r}
+# Use mtcars dataset
+data(mtcars)
+set.seed(123)
+train_idx <- sample(1:nrow(mtcars), 0.7 * nrow(mtcars))
+train <- mtcars[train_idx, ]
+test <- mtcars[-train_idx, ]
+
+# Fit model
+lm_model <- lm(mpg ~ wt + hp + cyl, data = train)
+summary(lm_model)
+
+# Predictions
+lm_pred <- predict(lm_model, test)
+
+# Evaluation
+library(Metrics)
+rmse(test$mpg, lm_pred)
+mae(test$mpg, lm_pred)
+cor(test$mpg, lm_pred)^2  # R-squared
+
+# Plot
+plot(test$mpg, lm_pred, xlab = "Actual", ylab = "Predicted")
+abline(0, 1, col = "red")
+```
+
+## Random Forest Regression
+
+```{r}
+# Fit random forest for regression
+rf_reg <- randomForest(mpg ~ ., data = train, ntree = 500)
+
+# Predictions
+rf_pred <- predict(rf_reg, test)
+
+# Evaluation
+rmse(test$mpg, rf_pred)
+mae(test$mpg, rf_pred)
+
+# Variable importance
+importance(rf_reg)
+```
+
+## XGBoost Regression
+
+```{r}
+# Prepare data
+train_matrix <- as.matrix(train[, -1])
+train_label <- train$mpg
+
+test_matrix <- as.matrix(test[, -1])
+test_label <- test$mpg
+
+# Create DMatrix
+dtrain <- xgb.DMatrix(data = train_matrix, label = train_label)
+dtest <- xgb.DMatrix(data = test_matrix, label = test_label)
+
+# Parameters
+params <- list(
+  objective = "reg:squarederror",
+  max_depth = 6,
+  eta = 0.1
+)
+
+# Train
+xgb_reg <- xgb.train(params = params, data = dtrain, nrounds = 100)
+
+# Predictions
+xgb_pred <- predict(xgb_reg, dtest)
+
+# Evaluation
+rmse(test_label, xgb_pred)
+mae(test_label, xgb_pred)
+```
+
+# 5. Model Evaluation
+
+## Cross-Validation
+
+```{r}
+library(caret)
+
+# 10-fold cross-validation
+train_control <- trainControl(method = "cv", number = 10)
+
+# Train with cross-validation
+cv_model <- train(Species ~ ., data = iris, method = "rf",
+                  trControl = train_control)
+print(cv_model)
+
+# Repeated cross-validation
+train_control_repeat <- trainControl(method = "repeatedcv",
+                                     number = 10, repeats = 3)
+cv_model_repeat <- train(Species ~ ., data = iris, method = "rf",
+                         trControl = train_control_repeat)
+```
+
+## ROC Curve and AUC
+
+```{r}
+library(pROC)
+
+# Binary classification example
+iris_binary <- iris[iris$Species != "setosa", ]
+iris_binary$Species <- factor(ifelse(iris_binary$Species == "virginica", 1, 0))
+
+# Fit logistic regression
+logit <- glm(Species ~ ., data = iris_binary, family = binomial)
+predictions <- predict(logit, type = "response")
+
+# ROC curve
+roc_obj <- roc(iris_binary$Species, predictions)
+plot(roc_obj, main = "ROC Curve")
+
+# AUC
+auc(roc_obj)
+
+# Optimal threshold
+coords(roc_obj, "best")
+```
+
+## Performance Metrics
+
+```{r}
+library(caret)
+
+# Confusion matrix with detailed metrics
+predictions <- predict(rf_model, test_data)
+cm <- confusionMatrix(predictions, test_data$Species)
+print(cm)
+
+# Extract metrics
+cm$overall['Accuracy']
+cm$byClass['Sensitivity']
+cm$byClass['Specificity']
+cm$byClass['Precision']
+cm$byClass['F1']
+```
+
+# 6. Unsupervised Learning - Clustering
+
+## K-Means Clustering
+
+```{r}
+# Prepare data (remove Species column)
+iris_features <- iris[, 1:4]
+
+# K-means with k=3
+set.seed(123)
+kmeans_result <- kmeans(iris_features, centers = 3, nstart = 25)
+
+# Cluster assignments
+kmeans_result$cluster
+
+# Cluster centers
+kmeans_result$centers
+
+# Visualize
+library(factoextra)
+fviz_cluster(kmeans_result, data = iris_features)
+
+# Determine optimal k (Elbow method)
+wss <- sapply(1:10, function(k) {
+  kmeans(iris_features, k, nstart = 10)$tot.withinss
+})
+plot(1:10, wss, type = "b", xlab = "Number of Clusters", ylab = "Within-cluster SS")
+
+# Silhouette method
+fviz_nbclust(iris_features, kmeans, method = "silhouette")
+
+# Gap statistic
+fviz_nbclust(iris_features, kmeans, method = "gap_stat")
+```
+
+## Hierarchical Clustering
+
+```{r}
+# Calculate distance matrix
+dist_matrix <- dist(iris_features, method = "euclidean")
+
+# Hierarchical clustering
+hc <- hclust(dist_matrix, method = "complete")
+
+# Dendrogram
+plot(hc, labels = iris$Species, main = "Hierarchical Clustering")
+rect.hclust(hc, k = 3, border = "red")
+
+# Cut tree to get clusters
+clusters <- cutree(hc, k = 3)
+
+# Visualize
+fviz_dend(hc, k = 3, rect = TRUE)
+
+# Different linkage methods
+hc_single <- hclust(dist_matrix, method = "single")
+hc_average <- hclust(dist_matrix, method = "average")
+hc_ward <- hclust(dist_matrix, method = "ward.D2")
+```
+
+## DBSCAN
+
+```{r}
+library(dbscan)
+
+# DBSCAN clustering
+db <- dbscan(iris_features, eps = 0.5, minPts = 5)
+
+# Cluster assignments (0 = noise)
+db$cluster
+
+# Visualize
+fviz_cluster(db, data = iris_features, geom = "point")
+
+# Find optimal eps
+kNNdistplot(iris_features, k = 5)
+abline(h = 0.5, col = "red")
+```
+
+# 7. Dimensionality Reduction
+
+## Principal Component Analysis (PCA)
+
+```{r}
+# Perform PCA
+pca_result <- prcomp(iris[, 1:4], center = TRUE, scale. = TRUE)
+
+# Summary
+summary(pca_result)
+
+# Loadings
+pca_result$rotation
+
+# Scores
+head(pca_result$x)
+
+# Scree plot
+plot(pca_result, type = "l")
+fviz_eig(pca_result)
+
+# Biplot
+biplot(pca_result)
+fviz_pca_biplot(pca_result, col.ind = iris$Species)
+
+# Variance explained
+var_explained <- pca_result$sdev^2 / sum(pca_result$sdev^2)
+plot(var_explained, type = "b", xlab = "PC", ylab = "Variance Explained")
+
+# Cumulative variance
+cumsum(var_explained)
+```
+
+## t-SNE
+
+```{r}
+library(Rtsne)
+
+# Run t-SNE
+set.seed(123)
+tsne_result <- Rtsne(as.matrix(iris[, 1:4]), dims = 2, perplexity = 30)
+
+# Plot
+tsne_data <- data.frame(
+  tsne1 = tsne_result$Y[, 1],
+  tsne2 = tsne_result$Y[, 2],
+  Species = iris$Species
+)
+
+ggplot(tsne_data, aes(x = tsne1, y = tsne2, color = Species)) +
+  geom_point(size = 2) +
+  theme_minimal()
+```
+
+## UMAP
+
+```{r}
+library(umap)
+
+# Run UMAP
+umap_result <- umap(iris[, 1:4])
+
+# Plot
+umap_data <- data.frame(
+  umap1 = umap_result$layout[, 1],
+  umap2 = umap_result$layout[, 2],
+  Species = iris$Species
+)
+
+ggplot(umap_data, aes(x = umap1, y = umap2, color = Species)) +
+  geom_point(size = 2) +
+  theme_minimal()
+```
+
+# 8. Feature Selection
+
+## Filter Methods
+
+```{r}
+library(caret)
+
+# Correlation-based
+cor_matrix <- cor(iris[, 1:4])
+high_cor <- findCorrelation(cor_matrix, cutoff = 0.75)
+
+# Variance-based (remove low variance)
+nzv <- nearZeroVar(iris[, 1:4])
+
+# Chi-square test for categorical
+# chisq.test based selection
+```
+
+## Wrapper Methods
+
+```{r}
+library(caret)
+
+# Recursive Feature Elimination (RFE)
+control <- rfeControl(functions = rfFuncs, method = "cv", number = 10)
+rfe_result <- rfe(iris[, 1:4], iris[, 5], sizes = c(1:4), rfeControl = control)
+
+print(rfe_result)
+predictors(rfe_result)
+plot(rfe_result, type = c("g", "o"))
+```
+
+## Embedded Methods
+
+```{r}
+# LASSO for feature selection
+library(glmnet)
+
+# Prepare data
+x <- as.matrix(mtcars[, -1])
+y <- mtcars$mpg
+
+# Fit LASSO
+lasso_model <- cv.glmnet(x, y, alpha = 1)
+plot(lasso_model)
+
+# Coefficients at optimal lambda
+coef(lasso_model, s = "lambda.min")
+
+# Non-zero coefficients
+coef(lasso_model, s = "lambda.min")[coef(lasso_model, s = "lambda.min")[, 1] != 0, ]
+```
+
+# 9. Hyperparameter Tuning
+
+## Grid Search
+
+```{r}
+library(caret)
+
+# Define grid
+tuneGrid <- expand.grid(
+  mtry = c(2, 3, 4),
+  splitrule = c("gini", "extratrees"),
+  min.node.size = c(1, 3, 5)
+)
+
+# Train with grid search
+train_control <- trainControl(method = "cv", number = 5)
+model_tuned <- train(Species ~ ., data = iris,
+                     method = "ranger",
+                     tuneGrid = tuneGrid,
+                     trControl = train_control)
+
+print(model_tuned)
+plot(model_tuned)
+
+# Best parameters
+model_tuned$bestTune
+```
+
+## Random Search
+
+```{r}
+# Random search
+train_control_random <- trainControl(method = "cv", number = 5,
+                                     search = "random")
+model_random <- train(Species ~ ., data = iris,
+                      method = "ranger",
+                      tuneLength = 15,
+                      trControl = train_control_random)
+
+print(model_random)
+```
+
+# 10. Ensemble Methods
+
+## Bagging
+
+```{r}
+library(ipred)
+
+# Bagging
+bag_model <- bagging(Species ~ ., data = train_data, nbagg = 25)
+
+# Predictions
+bag_pred <- predict(bag_model, test_data)
+
+# Accuracy
+mean(bag_pred == test_data$Species)
+```
+
+## Boosting
+
+```{r}
+library(adabag)
+
+# AdaBoost
+ada_model <- boosting(Species ~ ., data = train_data, boos = TRUE, mfinal = 50)
+
+# Predictions
+ada_pred <- predict(ada_model, test_data)
+
+# Accuracy
+ada_pred$confusion
+ada_pred$error
+```
+
+## Stacking
+
+```{r}
+library(caretEnsemble)
+
+# Define control
+train_control <- trainControl(
+  method = "cv",
+  number = 5,
+  savePredictions = "final",
+  classProbs = TRUE
+)
+
+# Train multiple models
+model_list <- caretList(
+  Species ~ ., data = train_data,
+  trControl = train_control,
+  methodList = c("rf", "rpart", "knn")
+)
+
+# Stack models
+stack_model <- caretStack(model_list, method = "glm")
+
+# Predictions
+stack_pred <- predict(stack_model, test_data)
+
+# Accuracy
+mean(stack_pred == test_data$Species)
+```
+
+# Summary
+
+This document covered machine learning in R:
+
+**Data Preparation**:
+- Train-test split, scaling, missing values
+
+**Classification**:
+- Logistic regression, KNN, decision trees
+- Random forest, SVM, Naive Bayes, XGBoost
+
+**Regression**:
+- Linear regression, random forest, XGBoost
+
+**Evaluation**:
+- Cross-validation, ROC/AUC, confusion matrix
+
+**Clustering**:
+- K-means, hierarchical, DBSCAN
+
+**Dimensionality Reduction**:
+- PCA, t-SNE, UMAP
+
+**Feature Selection**:
+- Filter, wrapper, embedded methods
+
+**Hyperparameter Tuning**:
+- Grid search, random search
+
+**Ensemble Methods**:
+- Bagging, boosting, stacking
+
+**Key Frameworks**:
+- caret: Unified interface
+- tidymodels: Modern framework
+- Base packages: Individual algorithms
+
+**Next Steps**: Proceed to Reproducible Research for R Markdown, version control, and project organization.
+
+# References
+
+- [An Introduction to Statistical Learning](https://www.statlearning.com/)
+- [Hands-On Machine Learning with R](https://bradleyboehmke.github.io/HOML/)
+- [caret documentation](https://topepo.github.io/caret/)
+- [tidymodels](https://www.tidymodels.org/)

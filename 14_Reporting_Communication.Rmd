@@ -1,0 +1,764 @@
+---
+title: "Reporting and Communication"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(knitr)
+library(kableExtra)
+library(ggplot2)
+```
+
+# 1. Creating Professional Tables
+
+## knitr::kable()
+
+```{r}
+# Basic table
+kable(head(mtcars))
+
+# With caption
+kable(head(iris), caption = "First 6 rows of iris dataset")
+
+# Customize column names
+kable(head(mtcars[, 1:3]),
+      col.names = c("Miles/(US) gallon", "Number of cylinders", "Displacement"))
+
+# Format numbers
+kable(head(mtcars[, 1:3]), digits = 1)
+
+# Alignment
+kable(head(mtcars[, 1:3]), align = c("l", "c", "r"))
+```
+
+## kableExtra
+
+```{r}
+library(kableExtra)
+
+# Styled table
+kable(head(mtcars)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover", "condensed"),
+                full_width = FALSE,
+                position = "left")
+
+# Column specifications
+kable(head(mtcars)) %>%
+  kable_styling() %>%
+  column_spec(1, bold = TRUE) %>%
+  column_spec(2, color = "red") %>%
+  column_spec(3, background = "lightblue")
+
+# Row specifications
+kable(head(mtcars)) %>%
+  kable_styling() %>%
+  row_spec(0, bold = TRUE, color = "white", background = "#4F81BD") %>%
+  row_spec(1:3, background = "#F0F0F0")
+
+# Group rows
+kable(mtcars[1:10, 1:4]) %>%
+  kable_styling() %>%
+  pack_rows("Group 1", 1, 4) %>%
+  pack_rows("Group 2", 5, 10)
+
+# Add footnotes
+kable(head(mtcars)) %>%
+  kable_styling() %>%
+  footnote(general = "Data from mtcars dataset",
+           number = c("Note 1", "Note 2"))
+
+# Scroll box for large tables
+kable(mtcars) %>%
+  kable_styling() %>%
+  scroll_box(width = "100%", height = "400px")
+```
+
+## gt Package
+
+```{r}
+library(gt)
+
+# Create gt table
+gt_table <- head(mtcars) %>%
+  gt() %>%
+  tab_header(
+    title = "Motor Trend Car Road Tests",
+    subtitle = "First 6 cars"
+  ) %>%
+  tab_source_note(
+    source_note = "Source: 1974 Motor Trend US magazine"
+  ) %>%
+  fmt_number(
+    columns = c(mpg, disp, drat, wt, qsec),
+    decimals = 1
+  ) %>%
+  cols_label(
+    mpg = "MPG",
+    cyl = "Cylinders",
+    disp = "Displacement"
+  ) %>%
+  tab_style(
+    style = cell_fill(color = "lightblue"),
+    locations = cells_body(columns = mpg, rows = mpg > 20)
+  )
+
+gt_table
+```
+
+## flextable
+
+```{r}
+library(flextable)
+
+# Create flextable
+ft <- flextable(head(mtcars))
+
+# Customize
+ft <- ft %>%
+  set_header_labels(
+    mpg = "Miles/(US) gallon",
+    cyl = "Number of cylinders"
+  ) %>%
+  color(i = ~ mpg > 20, j = "mpg", color = "red") %>%
+  bold(part = "header") %>%
+  align(align = "center", part = "all") %>%
+  autofit()
+
+ft
+```
+
+## DT (DataTables)
+
+```{r}
+library(DT)
+
+# Interactive table
+datatable(mtcars,
+          options = list(
+            pageLength = 10,
+            searching = TRUE,
+            ordering = TRUE
+          ),
+          filter = "top",
+          rownames = FALSE)
+
+# Format columns
+datatable(iris) %>%
+  formatRound(columns = 1:4, digits = 2) %>%
+  formatStyle('Sepal.Length',
+              backgroundColor = styleInterval(5, c('lightblue', 'lightgreen')))
+```
+
+# 2. Figure Best Practices
+
+## Publication-Quality Figures
+
+```{r}
+# Clean, professional theme
+p <- ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3, alpha = 0.7) +
+  geom_smooth(method = "lm", se = TRUE) +
+  labs(
+    title = "Fuel Efficiency vs Vehicle Weight",
+    subtitle = "Motor Trend Car Road Tests",
+    x = "Weight (1000 lbs)",
+    y = "Miles per Gallon",
+    color = "Cylinders",
+    caption = "Source: 1974 Motor Trend US magazine"
+  ) +
+  theme_classic() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold", size = 14),
+    plot.subtitle = element_text(hjust = 0.5, size = 11),
+    axis.title = element_text(size = 12),
+    legend.position = "bottom",
+    panel.grid.major.y = element_line(color = "gray90")
+  ) +
+  scale_color_brewer(palette = "Set1")
+
+p
+
+# Save with high resolution
+ggsave("figure1.png", p, width = 8, height = 6, dpi = 300)
+ggsave("figure1.pdf", p, width = 8, height = 6)
+```
+
+## Multi-Panel Figures
+
+```{r}
+library(patchwork)
+
+p1 <- ggplot(mtcars, aes(wt, mpg)) + geom_point() + labs(tag = "A")
+p2 <- ggplot(mtcars, aes(factor(cyl))) + geom_bar() + labs(tag = "B")
+p3 <- ggplot(mtcars, aes(factor(cyl), mpg)) + geom_boxplot() + labs(tag = "C")
+
+# Combine
+combined <- (p1 | p2) / p3 +
+  plot_annotation(
+    title = "Motor Trend Analysis",
+    subtitle = "Multiple aspects of car performance",
+    caption = "Data from mtcars dataset"
+  )
+
+combined
+```
+
+## Colorblind-Friendly Palettes
+
+```{r}
+library(viridis)
+
+# Viridis colors
+ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+  geom_point(size = 3) +
+  scale_color_viridis_d() +
+  theme_minimal()
+
+# ColorBrewer
+library(RColorBrewer)
+ggplot(iris, aes(Sepal.Length, Sepal.Width, color = Species)) +
+  geom_point(size = 3) +
+  scale_color_brewer(palette = "Set2") +
+  theme_minimal()
+```
+
+# 3. Output Formats
+
+## HTML Documents
+
+```yaml
+---
+title: "My Report"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    number_sections: true
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+    fig_width: 8
+    fig_height: 6
+    fig_caption: true
+---
+```
+
+## PDF Documents
+
+```yaml
+---
+title: "My Report"
+output:
+  pdf_document:
+    toc: true
+    toc_depth: 3
+    number_sections: true
+    fig_width: 7
+    fig_height: 5
+    fig_caption: true
+    keep_tex: true
+---
+```
+
+## Word Documents
+
+```yaml
+---
+title: "My Report"
+output:
+  word_document:
+    toc: true
+    toc_depth: 3
+    fig_width: 6
+    fig_height: 4
+    reference_docx: template.docx
+---
+```
+
+## beamer Presentations
+
+```yaml
+---
+title: "My Presentation"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  beamer_presentation:
+    theme: "Madrid"
+    colortheme: "dolphin"
+    fonttheme: "structurebold"
+    slide_level: 2
+---
+
+# Section 1
+
+## Slide 1
+
+Content here
+
+## Slide 2
+
+More content
+```
+
+## xaringan (HTML Presentations)
+
+```yaml
+---
+title: "Presentation Title"
+subtitle: "Subtitle"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    lib_dir: libs
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+# First Slide
+
+Content here
+
+---
+
+# Second Slide
+
+More content
+```
+
+# 4. Document Customization
+
+## Custom CSS
+
+```yaml
+---
+output:
+  html_document:
+    css: custom.css
+---
+```
+
+```css
+/* custom.css */
+body {
+  font-family: 'Arial', sans-serif;
+  font-size: 14px;
+}
+
+h1 {
+  color: #2C3E50;
+  border-bottom: 2px solid #3498DB;
+}
+
+.author, .date {
+  font-style: italic;
+  color: #7F8C8D;
+}
+```
+
+## Custom LaTeX
+
+```yaml
+---
+output:
+  pdf_document:
+    includes:
+      in_header: header.tex
+      before_body: before_body.tex
+      after_body: after_body.tex
+---
+```
+
+## Template Documents
+
+```yaml
+---
+output:
+  word_document:
+    reference_docx: my_template.docx
+  pdf_document:
+    template: my_template.tex
+---
+```
+
+# 5. Cross-Referencing
+
+## bookdown for Cross-References
+
+```yaml
+---
+output:
+  bookdown::html_document2:
+    number_sections: true
+  bookdown::pdf_document2:
+    number_sections: true
+---
+```
+
+```markdown
+See Figure \@ref(fig:plot1) and Table \@ref(tab:table1).
+
+```{r plot1, fig.cap="My plot"}
+plot(mtcars$wt, mtcars$mpg)
+```
+
+```{r table1}
+kable(head(mtcars), caption = "My table")
+```
+```
+
+# 6. Citations and Bibliography
+
+## Setting up Bibliography
+
+```yaml
+---
+title: "My Report"
+bibliography: references.bib
+csl: nature.csl
+output: html_document
+---
+```
+
+## BibTeX File (references.bib)
+
+```bibtex
+@article{wickham2014,
+  title={Tidy data},
+  author={Wickham, Hadley},
+  journal={Journal of Statistical Software},
+  volume={59},
+  number={10},
+  year={2014}
+}
+```
+
+## Citing in Text
+
+```markdown
+According to @wickham2014, tidy data is important.
+
+Multiple citations [@wickham2014; @author2020].
+
+# References
+```
+
+# 7. Interactive Documents
+
+## HTML Widgets
+
+```{r}
+library(plotly)
+library(leaflet)
+library(DT)
+
+# Interactive plot
+plot_ly(mtcars, x = ~wt, y = ~mpg, type = "scatter", mode = "markers")
+
+# Interactive map
+leaflet() %>%
+  addTiles() %>%
+  addMarkers(lng = -73.935242, lat = 40.730610, popup = "NYC")
+
+# Interactive table
+datatable(mtcars, filter = "top")
+```
+
+## runtime: shiny
+
+```yaml
+---
+title: "Interactive Document"
+output: html_document
+runtime: shiny
+---
+
+```{r}
+sliderInput("bins", "Number of bins:", 1, 50, 30)
+
+renderPlot({
+  hist(faithful$waiting, breaks = input$bins)
+})
+```
+```
+
+# 8. Long Documents and Books
+
+## bookdown
+
+```yaml
+# index.Rmd
+---
+title: "My Book"
+author: "Your Name"
+site: bookdown::bookdown_site
+output:
+  bookdown::gitbook:
+    config:
+      toc:
+        collapse: section
+      download: ["pdf", "epub"]
+  bookdown::pdf_book:
+    keep_tex: yes
+---
+
+# Preface {-}
+
+This is the preface.
+```
+
+```yaml
+# _bookdown.yml
+book_filename: "mybook"
+chapter_name: "Chapter "
+rmd_files: ["index.Rmd", "01-intro.Rmd", "02-methods.Rmd"]
+output_dir: "docs"
+```
+
+# 9. Scientific Writing Templates
+
+## rticles Package
+
+```{r eval=FALSE}
+# Install
+install.packages("rticles")
+
+# Available templates
+rticles::journals()
+
+# Create new document
+# File > New File > R Markdown > From Template
+# Choose journal template
+```
+
+# 10. Best Practices
+
+## Document Structure
+
+```markdown
+---
+title: "Analysis Title"
+author: "Author Name"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Executive Summary
+
+Brief overview of findings
+
+# Introduction
+
+- Background
+- Objectives
+- Research questions
+
+# Methods
+
+## Data Collection
+## Data Processing
+## Statistical Analysis
+
+# Results
+
+## Descriptive Statistics
+## Main Findings
+## Subgroup Analysis
+
+# Discussion
+
+- Interpretation
+- Limitations
+- Future directions
+
+# Conclusions
+
+Key takeaways
+
+# References
+
+# Appendix
+
+## Session Information
+```
+
+## Code Organization
+
+```{r eval=FALSE}
+# Setup chunk (at beginning)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,      # Don't show code
+  warning = FALSE,   # Don't show warnings
+  message = FALSE,   # Don't show messages
+  fig.width = 8,     # Default figure width
+  fig.height = 6,    # Default figure height
+  dpi = 300          # High resolution
+)
+
+# Load libraries
+library(tidyverse)
+library(kableExtra)
+
+# Set ggplot2 theme
+theme_set(theme_minimal())
+```
+
+# Import data (hidden)
+```{r}
+data <- read.csv("data.csv")
+```
+
+# Show results (visible)
+```{r echo=TRUE}
+summary(data)
+```
+```
+
+## Figure and Table Captions
+
+```{r}
+# Good caption
+# ```{r fig-scatter, fig.cap="Figure 1. Relationship between vehicle weight and fuel efficiency. Points are colored by number of cylinders. Linear regression lines show negative correlation within each cylinder group. Data from 1974 Motor Trend US magazine."}
+plot(mtcars$wt, mtcars$mpg)
+# ```
+
+# Table with informative caption
+kable(head(mtcars), caption = "Table 1. Summary statistics for the first 6 vehicles in the Motor Trend Car Road Tests dataset. Values shown include fuel efficiency (mpg), engine configuration (cyl, hp), and vehicle dimensions (wt).")
+```
+
+## Reproducibility
+
+```{r}
+# Always include session info
+sessionInfo()
+
+# Or use devtools
+library(devtools)
+session_info()
+
+# Include data sources
+# Document package versions
+# Include random seed if applicable
+set.seed(123)
+```
+
+# 11. Accessibility
+
+## Alt Text for Images
+
+```yaml
+```{r fig.alt="Scatter plot showing negative relationship between weight and MPG"}
+plot(mtcars$wt, mtcars$mpg)
+```
+```
+
+## Semantic Markup
+
+```markdown
+# Use proper heading hierarchy
+
+## Second level
+
+### Third level
+
+- Use lists appropriately
+- Use tables for tabular data
+- Use emphasis (*italic*) and strong (**bold**) appropriately
+```
+
+# 12. Collaborative Writing
+
+## Version Control
+
+```bash
+# Track Rmd files
+git add analysis.Rmd
+git commit -m "Add exploratory analysis"
+
+# Ignore output files
+# .gitignore:
+*.html
+*.pdf
+*_cache/
+*_files/
+```
+
+## Comments and TODOs
+
+```markdown
+<!-- This is a comment that won't appear in output -->
+
+<!-- TODO: Add more detailed explanation here -->
+
+<!-- NOTE: Check these numbers with collaborator -->
+```
+
+# Summary
+
+This document covered reporting and communication:
+
+**Tables**:
+- kable for simple tables
+- kableExtra for styled tables
+- gt for complex tables
+- DT for interactive tables
+
+**Figures**:
+- Publication-quality plots
+- Multi-panel figures
+- Colorblind-friendly palettes
+- High-resolution output
+
+**Output Formats**:
+- HTML, PDF, Word
+- Presentations (Beamer, xaringan)
+- Books (bookdown)
+- Journal articles (rticles)
+
+**Customization**:
+- Themes and styling
+- Custom CSS/LaTeX
+- Templates
+
+**Advanced Features**:
+- Cross-referencing
+- Citations and bibliography
+- Interactive documents
+- HTML widgets
+
+**Best Practices**:
+- Clear structure
+- Informative captions
+- Reproducible
+- Accessible
+
+**Key Principles**:
+- Know your audience
+- Clear and concise
+- Professional appearance
+- Fully reproducible
+- Well-documented
+
+**Next Steps**: Proceed to Package Development for creating R packages.
+
+# References
+
+- [R Markdown: The Definitive Guide](https://bookdown.org/yihui/rmarkdown/)
+- [R Markdown Cookbook](https://bookdown.org/yihui/rmarkdown-cookbook/)
+- [bookdown: Authoring Books with R Markdown](https://bookdown.org/yihui/bookdown/)
+- [gt Documentation](https://gt.rstudio.com/)
+- [kableExtra Documentation](https://haozhu233.github.io/kableExtra/)

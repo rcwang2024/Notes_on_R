@@ -1,0 +1,1102 @@
+---
+title: "Advanced Visualization Techniques"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Advanced Interactive Visualizations
+
+## plotly for Interactive Plots
+
+```{r}
+library(plotly)
+library(ggplot2)
+
+# Convert ggplot to plotly
+p <- ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point(size = 3) +
+  geom_smooth(method = "lm") +
+  theme_minimal()
+
+ggplotly(p)
+
+# Native plotly
+plot_ly(data = mtcars,
+        x = ~wt,
+        y = ~mpg,
+        color = ~factor(cyl),
+        type = "scatter",
+        mode = "markers",
+        marker = list(size = 10),
+        text = ~paste("Car:", rownames(mtcars),
+                     "<br>MPG:", mpg,
+                     "<br>Weight:", wt),
+        hoverinfo = "text")
+
+# 3D scatter plot
+plot_ly(iris,
+        x = ~Sepal.Length,
+        y = ~Sepal.Width,
+        z = ~Petal.Length,
+        color = ~Species,
+        type = "scatter3d",
+        mode = "markers",
+        marker = list(size = 5))
+
+# Interactive heatmap
+plot_ly(z = ~volcano,
+        type = "heatmap",
+        colorscale = "Viridis")
+
+# Animated plot
+library(gapminder)
+
+p <- plot_ly(gapminder,
+             x = ~gdpPercap,
+             y = ~lifeExp,
+             size = ~pop,
+             color = ~continent,
+             frame = ~year,
+             text = ~country,
+             hoverinfo = "text",
+             type = 'scatter',
+             mode = 'markers') %>%
+  layout(xaxis = list(type = "log"))
+
+p
+
+# Surface plot
+plot_ly(z = ~volcano, type = "surface")
+```
+
+## highcharter for Advanced Charts
+
+```{r}
+library(highcharter)
+
+# Basic chart
+hchart(mtcars, "scatter",
+       hcaes(x = wt, y = mpg, group = factor(cyl)))
+
+# Time series
+library(quantmod)
+getSymbols("AAPL", from = "2020-01-01")
+
+highchart(type = "stock") %>%
+  hc_add_series(AAPL$AAPL.Close, name = "Apple Stock")
+
+# Complex multi-series chart
+data <- data.frame(
+  month = month.abb,
+  sales = runif(12, 100, 500),
+  costs = runif(12, 50, 300),
+  profit = runif(12, 20, 200)
+)
+
+highchart() %>%
+  hc_xAxis(categories = data$month) %>%
+  hc_add_series(name = "Sales", data = data$sales, type = "column") %>%
+  hc_add_series(name = "Costs", data = data$costs, type = "column") %>%
+  hc_add_series(name = "Profit", data = data$profit, type = "line") %>%
+  hc_title(text = "Monthly Performance") %>%
+  hc_yAxis(title = list(text = "Amount ($)"))
+
+# Biological data: gene expression heatmap
+hchart(cor(mtcars), type = "heatmap") %>%
+  hc_colorAxis(stops = color_stops(colors = viridisLite::inferno(10)))
+```
+
+## ggiraph for Interactive ggplot2
+
+```{r}
+library(ggiraph)
+
+# Interactive scatter plot
+p <- ggplot(mtcars, aes(x = wt, y = mpg, color = factor(cyl))) +
+  geom_point_interactive(
+    aes(tooltip = paste0("Car: ", rownames(mtcars),
+                        "\nMPG: ", mpg,
+                        "\nWeight: ", wt),
+        data_id = rownames(mtcars)),
+    size = 3
+  ) +
+  theme_minimal()
+
+girafe(ggobj = p,
+       options = list(
+         opts_hover(css = "fill:red;stroke:black;"),
+         opts_selection(type = "single", css = "fill:orange;")
+       ))
+
+# Interactive bar chart
+p <- ggplot(mpg, aes(x = class, fill = class)) +
+  geom_bar_interactive(aes(tooltip = after_stat(count),
+                           data_id = class)) +
+  theme_minimal() +
+  theme(legend.position = "none")
+
+girafe(ggobj = p)
+
+# Interactive heatmap
+library(reshape2)
+cor_mat <- cor(mtcars)
+cor_melt <- melt(cor_mat)
+
+p <- ggplot(cor_melt, aes(Var1, Var2, fill = value)) +
+  geom_tile_interactive(
+    aes(tooltip = paste0(Var1, " vs ", Var2, "\nCorr: ", round(value, 3)),
+        data_id = paste(Var1, Var2))
+  ) +
+  scale_fill_gradient2(low = "blue", high = "red", mid = "white", midpoint = 0) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+girafe(ggobj = p)
+```
+
+# 2. Network Visualization
+
+## igraph for Network Analysis
+
+```{r}
+library(igraph)
+
+# Create network from edge list
+edges <- data.frame(
+  from = c("A", "A", "B", "B", "C", "D"),
+  to = c("B", "C", "C", "D", "D", "E"),
+  weight = c(1, 2, 3, 1, 2, 1)
+)
+
+g <- graph_from_data_frame(edges, directed = TRUE)
+
+# Basic plot
+plot(g,
+     vertex.color = "lightblue",
+     vertex.size = 30,
+     vertex.label.color = "black",
+     edge.arrow.size = 0.5,
+     edge.width = E(g)$weight,
+     layout = layout_with_fr)
+
+# Network metrics
+degree(g)
+betweenness(g)
+closeness(g)
+page_rank(g)$vector
+
+# Community detection
+communities <- cluster_louvain(as.undirected(g))
+plot(communities, as.undirected(g))
+
+# Advanced visualization
+library(ggraph)
+
+ggraph(g, layout = 'fr') +
+  geom_edge_link(aes(width = weight),
+                 arrow = arrow(length = unit(3, 'mm')),
+                 end_cap = circle(3, 'mm'),
+                 alpha = 0.7) +
+  geom_node_point(size = 10, color = "lightblue") +
+  geom_node_text(aes(label = name), repel = TRUE) +
+  scale_edge_width(range = c(0.5, 3)) +
+  theme_graph()
+```
+
+## visNetwork for Interactive Networks
+
+```{r}
+library(visNetwork)
+
+# Create nodes and edges
+nodes <- data.frame(
+  id = 1:10,
+  label = paste("Node", 1:10),
+  group = sample(c("A", "B", "C"), 10, replace = TRUE),
+  value = runif(10, 10, 30),
+  title = paste("Node", 1:10, "info")
+)
+
+edges <- data.frame(
+  from = sample(1:10, 20, replace = TRUE),
+  to = sample(1:10, 20, replace = TRUE),
+  value = runif(20, 1, 10),
+  title = paste("Edge", 1:20)
+)
+
+# Interactive network
+visNetwork(nodes, edges) %>%
+  visOptions(highlightNearest = TRUE,
+             nodesIdSelection = TRUE) %>%
+  visPhysics(stabilization = TRUE) %>%
+  visEdges(arrows = "to") %>%
+  visGroups(groupname = "A", color = "lightblue") %>%
+  visGroups(groupname = "B", color = "lightgreen") %>%
+  visGroups(groupname = "C", color = "pink") %>%
+  visLegend()
+
+# Hierarchical layout
+visNetwork(nodes, edges) %>%
+  visHierarchicalLayout(direction = "UD",
+                       sortMethod = "directed")
+
+# Gene regulatory network example
+genes <- data.frame(
+  id = 1:50,
+  label = paste0("Gene", 1:50),
+  group = sample(c("TF", "Target"), 50, replace = TRUE, prob = c(0.2, 0.8)),
+  expression = rnorm(50, mean = 5, sd = 2)
+)
+
+# Color by expression
+library(RColorBrewer)
+colors <- colorRampPalette(brewer.pal(9, "RdYlBu"))(50)
+genes$color <- colors[rank(genes$expression)]
+
+regulations <- data.frame(
+  from = sample(which(genes$group == "TF"), 100, replace = TRUE),
+  to = sample(1:50, 100, replace = TRUE),
+  type = sample(c("activation", "repression"), 100, replace = TRUE)
+)
+
+regulations$color <- ifelse(regulations$type == "activation", "green", "red")
+
+visNetwork(genes, regulations) %>%
+  visOptions(highlightNearest = list(enabled = TRUE, degree = 1)) %>%
+  visPhysics(solver = "forceAtlas2Based")
+```
+
+## Biological Networks
+
+```{r}
+# Protein-protein interaction network
+library(STRINGdb)
+library(igraph)
+
+string_db <- STRINGdb$new(version = "11.5", species = 9606, score_threshold = 400)
+
+# Get proteins
+genes <- c("TP53", "BRCA1", "BRCA2", "ATM", "CHEK2")
+mapped <- string_db$map(data.frame(gene = genes), "gene")
+
+# Get interactions
+interactions <- string_db$get_interactions(mapped$STRING_id)
+
+# Create network
+g <- graph_from_data_frame(interactions[, c("from", "to", "combined_score")],
+                          directed = FALSE)
+
+# Plot
+library(ggraph)
+
+ggraph(g, layout = 'fr') +
+  geom_edge_link(aes(alpha = combined_score / 1000)) +
+  geom_node_point(size = 8, color = "lightblue") +
+  geom_node_text(aes(label = name), repel = TRUE, size = 3) +
+  theme_graph() +
+  labs(title = "Protein-Protein Interaction Network")
+
+# Pathway network
+library(graphite)
+library(org.Hs.eg.db)
+
+# Get KEGG pathway
+pathways <- pathways("hsapiens", "kegg")
+p53_pathway <- pathways[["p53 signaling pathway"]]
+
+# Convert to igraph
+g <- pathwayGraph(p53_pathway)
+
+plot(g,
+     vertex.size = 5,
+     vertex.label.cex = 0.7,
+     vertex.color = "lightblue",
+     layout = layout_with_kk)
+```
+
+# 3. Genome Browsers and Genomic Visualizations
+
+## Gviz for Genomic Tracks
+
+```{r}
+library(Gviz)
+library(GenomicRanges)
+
+# Define genomic region
+chr <- "chr7"
+start <- 26700000
+end <- 27000000
+genome <- "hg38"
+
+# Ideogram track
+itrack <- IdeogramTrack(genome = genome, chromosome = chr)
+
+# Genome axis
+gtrack <- GenomeAxisTrack()
+
+# Gene track
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+
+grtrack <- GeneRegionTrack(txdb,
+                          genome = genome,
+                          chromosome = chr,
+                          start = start,
+                          end = end,
+                          name = "Genes",
+                          transcriptAnnotation = "symbol")
+
+# Data track (coverage)
+coverage_data <- data.frame(
+  start = seq(start, end, length.out = 100),
+  end = seq(start, end, length.out = 100) + 1000,
+  score = rnorm(100, mean = 50, sd = 10)
+)
+
+coverage_gr <- GRanges(seqnames = chr,
+                      ranges = IRanges(start = coverage_data$start,
+                                      end = coverage_data$end),
+                      score = coverage_data$score)
+
+dtrack <- DataTrack(coverage_gr,
+                   name = "Coverage",
+                   type = "h")
+
+# SNP track
+snps <- data.frame(
+  pos = sample(start:end, 50),
+  id = paste0("rs", 1:50)
+)
+
+snp_gr <- GRanges(seqnames = chr,
+                 ranges = IRanges(start = snps$pos, width = 1),
+                 id = snps$id)
+
+atrack <- AnnotationTrack(snp_gr,
+                         name = "SNPs",
+                         stacking = "dense")
+
+# Plot all tracks
+plotTracks(list(itrack, gtrack, grtrack, dtrack, atrack),
+          from = start,
+          to = end,
+          chromosome = chr)
+
+# Heatmap track for multiple samples
+library(GenomicRanges)
+
+samples <- 10
+positions <- seq(start, end, length.out = 1000)
+
+expr_matrix <- matrix(rnorm(length(positions) * samples),
+                     nrow = length(positions),
+                     ncol = samples)
+
+expr_gr <- GRanges(seqnames = chr,
+                  ranges = IRanges(start = positions, width = 1000))
+
+htrack <- DataTrack(data = expr_matrix,
+                   start = positions,
+                   end = positions + 1000,
+                   chromosome = chr,
+                   genome = genome,
+                   name = "Expression",
+                   type = "heatmap")
+
+plotTracks(list(itrack, gtrack, grtrack, htrack),
+          from = start,
+          to = end)
+```
+
+## karyoploteR for Whole Genome Visualization
+
+```{r}
+library(karyoploteR)
+
+# Basic karyotype plot
+kp <- plotKaryotype(genome = "hg38")
+
+# Add data
+data <- data.frame(
+  chr = paste0("chr", sample(1:22, 1000, replace = TRUE)),
+  start = sample(1:100000000, 1000),
+  end = sample(1:100000000, 1000) + 10000,
+  value = rnorm(1000)
+)
+
+data_gr <- makeGRangesFromDataFrame(data, keep.extra.columns = TRUE)
+
+kp <- plotKaryotype(genome = "hg38")
+kpPoints(kp, data = data_gr, y = data_gr$value)
+
+# CNV visualization
+cnv_data <- data.frame(
+  chr = paste0("chr", c(1, 2, 3, 5, 7, 8, 12, 17)),
+  start = c(1e6, 5e6, 10e6, 20e6, 15e6, 30e6, 40e6, 25e6),
+  end = c(5e6, 15e6, 30e6, 40e6, 35e6, 50e6, 60e6, 45e6),
+  cn = c(3, 1, 4, 2, 3, 1, 2, 4)
+)
+
+cnv_gr <- makeGRangesFromDataFrame(cnv_data, keep.extra.columns = TRUE)
+
+kp <- plotKaryotype(genome = "hg38", plot.type = 2)
+
+kpPlotRegions(kp,
+             data = cnv_gr,
+             col = ifelse(cnv_gr$cn > 2, "red", "blue"),
+             data.panel = 1)
+
+# Multiple data tracks
+kp <- plotKaryotype(genome = "hg38", plot.type = 4)
+
+# Track 1: CNV
+kpPlotRegions(kp, data = cnv_gr, col = "red", data.panel = 1)
+
+# Track 2: Gene expression
+kpPoints(kp, data = data_gr, y = data_gr$value, data.panel = 2)
+
+# Track 3: Coverage
+kpBars(kp, data = data_gr, y1 = abs(data_gr$value), data.panel = 3)
+```
+
+## circlize for Circular Plots
+
+```{r}
+library(circlize)
+
+# Basic circular plot
+circos.par("start.degree" = 90)
+circos.initialize(factors = paste0("chr", 1:22),
+                 xlim = matrix(c(rep(0, 22), runif(22, 1e7, 2e8)),
+                              ncol = 2))
+
+circos.track(ylim = c(0, 1),
+            panel.fun = function(x, y) {
+              circos.text(CELL_META$xcenter,
+                         CELL_META$ycenter,
+                         CELL_META$sector.index)
+            })
+
+circos.clear()
+
+# Genomic data circular plot
+library(GenomicRanges)
+
+# Simulated genomic data
+chrom_info <- data.frame(
+  chr = paste0("chr", 1:22),
+  start = 1,
+  end = runif(22, 1e8, 2e8)
+)
+
+circos.genomicInitialize(chrom_info)
+
+# Add CNV track
+cnv_data <- generateRandomBed(nr = 100, nc = 1)
+circos.genomicTrack(cnv_data,
+                   panel.fun = function(region, value, ...) {
+                     circos.genomicPoints(region, value, pch = 16, cex = 0.5)
+                   })
+
+# Add links (translocations)
+link_data <- data.frame(
+  chr1 = sample(paste0("chr", 1:22), 50, replace = TRUE),
+  pos1 = runif(50, 0, 1e8),
+  chr2 = sample(paste0("chr", 1:22), 50, replace = TRUE),
+  pos2 = runif(50, 0, 1e8)
+)
+
+for (i in 1:nrow(link_data)) {
+  circos.link(link_data$chr1[i], link_data$pos1[i],
+             link_data$chr2[i], link_data$pos2[i],
+             col = rgb(1, 0, 0, 0.3))
+}
+
+circos.clear()
+
+# Heatmap on circular plot
+mat <- matrix(rnorm(100 * 10), nrow = 100)
+col_fun <- colorRamp2(c(-2, 0, 2), c("blue", "white", "red"))
+
+circos.heatmap(mat,
+              split = sample(c("A", "B", "C", "D"), 100, replace = TRUE),
+              col = col_fun,
+              track.height = 0.4)
+
+circos.clear()
+```
+
+# 4. Bioinformatics-Specific Visualizations
+
+## ComplexHeatmap for Advanced Heatmaps
+
+```{r}
+library(ComplexHeatmap)
+library(circlize)
+
+# Generate example data
+set.seed(123)
+mat <- matrix(rnorm(1000), nrow = 100)
+rownames(mat) <- paste0("Gene", 1:100)
+colnames(mat) <- paste0("Sample", 1:10)
+
+# Basic heatmap with clustering
+Heatmap(mat,
+        name = "Expression",
+        show_row_names = FALSE,
+        column_title = "Gene Expression Heatmap")
+
+# Advanced heatmap with annotations
+# Row annotations
+row_anno <- data.frame(
+  cluster = sample(c("C1", "C2", "C3"), 100, replace = TRUE),
+  pathway = sample(c("P1", "P2", "P3", "P4"), 100, replace = TRUE)
+)
+
+ha_row <- rowAnnotation(
+  Cluster = row_anno$cluster,
+  Pathway = row_anno$pathway,
+  col = list(
+    Cluster = c("C1" = "red", "C2" = "blue", "C3" = "green"),
+    Pathway = c("P1" = "purple", "P2" = "orange", "P3" = "pink", "P4" = "yellow")
+  )
+)
+
+# Column annotations
+col_anno <- data.frame(
+  condition = rep(c("Control", "Treatment"), each = 5),
+  batch = rep(c("B1", "B2"), 5)
+)
+
+ha_col <- HeatmapAnnotation(
+  Condition = col_anno$condition,
+  Batch = col_anno$batch,
+  col = list(
+    Condition = c("Control" = "lightblue", "Treatment" = "pink"),
+    Batch = c("B1" = "gray", "B2" = "white")
+  )
+)
+
+# Complex heatmap
+Heatmap(mat,
+        name = "Expression",
+        top_annotation = ha_col,
+        right_annotation = ha_row,
+        show_row_names = FALSE,
+        column_title = "Gene Expression with Annotations",
+        row_km = 3,  # K-means clustering with 3 groups
+        column_km = 2)
+
+# Multiple heatmaps
+mat1 <- mat
+mat2 <- matrix(sample(c(0, 1), 100 * 10, replace = TRUE), nrow = 100)
+mat3 <- matrix(runif(100 * 10), nrow = 100)
+
+ht1 <- Heatmap(mat1, name = "Expression", show_row_names = FALSE, width = unit(6, "cm"))
+ht2 <- Heatmap(mat2, name = "Mutation", col = c("0" = "white", "1" = "black"),
+              show_row_names = FALSE, width = unit(3, "cm"))
+ht3 <- Heatmap(mat3, name = "CNV", col = colorRamp2(c(0, 0.5, 1), c("blue", "white", "red")),
+              show_row_names = FALSE, width = unit(3, "cm"))
+
+ht1 + ht2 + ht3
+
+# Onchoprint for cancer genomics
+library(ComplexHeatmap)
+
+mat_onco <- matrix(sample(c("MUT", "AMP", "DEL", ""), 100, replace = TRUE),
+                  nrow = 10, ncol = 10)
+rownames(mat_onco) <- paste0("Gene", 1:10)
+colnames(mat_onco) <- paste0("Sample", 1:10)
+
+col <- c("MUT" = "blue", "AMP" = "red", "DEL" = "green")
+alter_fun <- list(
+  background = function(x, y, w, h) grid.rect(x, y, w, h, gp = gpar(fill = "#CCCCCC", col = NA)),
+  MUT = function(x, y, w, h) grid.rect(x, y, w, h, gp = gpar(fill = "blue", col = NA)),
+  AMP = function(x, y, w, h) grid.rect(x, y, w*0.9, h*0.9, gp = gpar(fill = "red", col = NA)),
+  DEL = function(x, y, w, h) grid.rect(x, y, w*0.9, h*0.9, gp = gpar(fill = "green", col = NA))
+)
+
+oncoPrint(mat_onco,
+         alter_fun = alter_fun,
+         col = col,
+         column_title = "OncoPrint Example")
+```
+
+## EnhancedVolcano for Volcano Plots
+
+```{r}
+library(EnhancedVolcano)
+
+# Generate DESeq2-like results
+set.seed(123)
+n_genes <- 5000
+
+results <- data.frame(
+  Gene = paste0("Gene", 1:n_genes),
+  log2FoldChange = rnorm(n_genes, mean = 0, sd = 1.5),
+  pvalue = runif(n_genes, 0, 1),
+  padj = runif(n_genes, 0, 1)
+)
+
+results$padj[sample(1:n_genes, 100)] <- runif(100, 0, 0.001)
+rownames(results) <- results$Gene
+
+# Basic volcano plot
+EnhancedVolcano(results,
+               lab = rownames(results),
+               x = 'log2FoldChange',
+               y = 'padj',
+               title = 'DEGs Volcano Plot',
+               pCutoff = 0.05,
+               FCcutoff = 1.0,
+               pointSize = 2.0,
+               labSize = 3.0)
+
+# Advanced volcano with custom colors
+EnhancedVolcano(results,
+               lab = rownames(results),
+               x = 'log2FoldChange',
+               y = 'padj',
+               title = 'Advanced Volcano Plot',
+               pCutoff = 0.05,
+               FCcutoff = 1.5,
+               pointSize = 3.0,
+               labSize = 4.0,
+               col = c('grey30', 'forestgreen', 'royalblue', 'red2'),
+               colAlpha = 0.7,
+               legendPosition = 'right',
+               legendLabels = c('NS', 'Log2 FC', 'p-value', 'p-value & Log2 FC'),
+               drawConnectors = TRUE,
+               widthConnectors = 0.5,
+               selectLab = rownames(results)[1:10])
+```
+
+## ggbio for Genomic Data
+
+```{r}
+library(ggbio)
+library(GenomicRanges)
+
+# Basic track
+data(genesymbol, package = "biovizBase")
+
+autoplot(genesymbol, which = GRanges("chr1", IRanges(1e6, 5e6)))
+
+# Multiple tracks
+library(TxDb.Hsapiens.UCSC.hg38.knownGene)
+txdb <- TxDb.Hsapiens.UCSC.hg38.knownGene
+
+# SNP data
+snps <- GRanges(seqnames = "chr1",
+               ranges = IRanges(start = sample(1e6:5e6, 100),
+                               width = 1),
+               SNP = paste0("rs", 1:100))
+
+# Coverage data
+coverage <- GRanges(seqnames = "chr1",
+                   ranges = IRanges(start = seq(1e6, 5e6, length.out = 100),
+                                   width = 10000),
+                   score = rnorm(100, mean = 50, sd = 10))
+
+# Create tracks
+p1 <- autoplot(txdb, which = GRanges("chr1", IRanges(1e6, 5e6)))
+p2 <- autoplot(snps, geom = "point")
+p3 <- autoplot(coverage, geom = "line", aes(y = score))
+
+# Combine
+tracks(Gene = p1, SNP = p2, Coverage = p3, heights = c(3, 1, 2))
+
+# Manhattan plot
+snp_data <- data.frame(
+  CHR = sample(1:22, 10000, replace = TRUE),
+  BP = sample(1:200000000, 10000),
+  P = 10^-runif(10000, 0, 8),
+  SNP = paste0("rs", 1:10000)
+)
+
+plotGrandLinear(snp_data, aes(y = -log10(P)))
+```
+
+# 5. Spatial Visualizations
+
+## Spatial Transcriptomics
+
+```{r}
+library(Seurat)
+library(ggplot2)
+
+# Example: 10X Visium data
+# Load spatial data
+spatial_obj <- Load10X_Spatial(
+  data.dir = "path/to/spaceranger/outs",
+  filename = "filtered_feature_bc_matrix.h5"
+)
+
+# Preprocessing
+spatial_obj <- NormalizeData(spatial_obj)
+spatial_obj <- FindVariableFeatures(spatial_obj)
+spatial_obj <- ScaleData(spatial_obj)
+spatial_obj <- RunPCA(spatial_obj)
+spatial_obj <- FindNeighbors(spatial_obj, dims = 1:30)
+spatial_obj <- FindClusters(spatial_obj, resolution = 0.5)
+spatial_obj <- RunUMAP(spatial_obj, dims = 1:30)
+
+# Spatial visualization
+SpatialFeaturePlot(spatial_obj, features = "CD3E")
+
+# Multiple features
+SpatialFeaturePlot(spatial_obj,
+                  features = c("CD3E", "CD8A", "CD4", "CD19"),
+                  ncol = 2)
+
+# Clusters on tissue
+SpatialDimPlot(spatial_obj, label = TRUE, label.size = 3)
+
+# Interactive spatial plot
+SpatialFeaturePlot(spatial_obj,
+                  features = "CD3E",
+                  interactive = TRUE)
+
+# Custom spatial visualization
+coords <- GetTissueCoordinates(spatial_obj)
+coords$cluster <- spatial_obj$seurat_clusters
+
+ggplot(coords, aes(x = imagerow, y = imagecol, color = cluster)) +
+  geom_point(size = 2) +
+  scale_y_reverse() +
+  theme_minimal() +
+  labs(title = "Spatial Clusters")
+```
+
+## Geographic Visualization
+
+```{r}
+library(leaflet)
+
+# Basic map
+leaflet() %>%
+  addTiles() %>%
+  addMarkers(lng = -73.935242, lat = 40.730610,
+            popup = "New York, NY")
+
+# Multiple locations with data
+locations <- data.frame(
+  lat = runif(100, 40, 45),
+  lng = runif(100, -75, -70),
+  value = rnorm(100, mean = 50, sd = 10)
+)
+
+pal <- colorNumeric(palette = "viridis", domain = locations$value)
+
+leaflet(locations) %>%
+  addTiles() %>%
+  addCircleMarkers(
+    ~lng, ~lat,
+    radius = ~value/5,
+    color = ~pal(value),
+    stroke = FALSE,
+    fillOpacity = 0.7,
+    popup = ~paste("Value:", round(value, 2))
+  ) %>%
+  addLegend("bottomright",
+           pal = pal,
+           values = ~value,
+           title = "Value")
+
+# Heatmap overlay
+leaflet(locations) %>%
+  addTiles() %>%
+  addHeatmap(
+    lng = ~lng,
+    lat = ~lat,
+    intensity = ~value,
+    blur = 20,
+    max = 0.05,
+    radius = 15
+  )
+```
+
+# 6. Animated Visualizations
+
+## gganimate for Animations
+
+```{r}
+library(gganimate)
+library(ggplot2)
+
+# Simple animation
+library(gapminder)
+
+p <- ggplot(gapminder, aes(gdpPercap, lifeExp, size = pop, color = continent)) +
+  geom_point(alpha = 0.7) +
+  scale_x_log10() +
+  scale_size(range = c(2, 12)) +
+  labs(title = 'Year: {frame_time}',
+       x = 'GDP per capita',
+       y = 'Life expectancy') +
+  transition_time(year) +
+  ease_aes('linear')
+
+animate(p, nframes = 100, fps = 10)
+
+# Save animation
+anim_save("gapminder.gif", animation = p)
+
+# Biological example: gene expression over time
+time_series <- data.frame(
+  time = rep(0:24, each = 100),
+  gene = rep(paste0("Gene", 1:100), 25),
+  expression = rnorm(2500, mean = 5, sd = 2) +
+               rep(sin(seq(0, 2*pi, length.out = 25)), each = 100)
+)
+
+p <- ggplot(time_series, aes(x = gene, y = expression, fill = expression)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  theme(axis.text.x = element_blank()) +
+  labs(title = 'Time: {frame_time} hours') +
+  transition_time(time)
+
+animate(p, nframes = 50, fps = 5)
+
+# Animated scatter
+p <- ggplot(time_series, aes(time, expression, color = gene)) +
+  geom_line(alpha = 0.5) +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  transition_reveal(time)
+
+animate(p)
+```
+
+## plotly Animations
+
+```{r}
+library(plotly)
+
+# Animated scatter
+plot_ly(gapminder,
+        x = ~gdpPercap,
+        y = ~lifeExp,
+        size = ~pop,
+        color = ~continent,
+        frame = ~year,
+        text = ~country,
+        hoverinfo = "text",
+        type = 'scatter',
+        mode = 'markers') %>%
+  layout(xaxis = list(type = "log"))
+
+# Animated bar chart
+df <- data.frame(
+  year = rep(2015:2020, each = 5),
+  category = rep(LETTERS[1:5], 6),
+  value = runif(30, 10, 100)
+)
+
+plot_ly(df,
+        x = ~category,
+        y = ~value,
+        frame = ~year,
+        type = 'bar') %>%
+  animation_opts(frame = 1000, transition = 300)
+```
+
+# 7. Dashboard Integration
+
+## flexdashboard Layout
+
+```{r eval=FALSE}
+# Save as .Rmd file
+---
+title: "Genomics Dashboard"
+output:
+  flexdashboard::flex_dashboard:
+    orientation: rows
+    vertical_layout: fill
+---
+
+```{r setup, include=FALSE}
+library(flexdashboard)
+library(plotly)
+library(DT)
+```
+
+# Page 1
+
+## Row {data-height=650}
+
+### Chart A
+```{r}
+plot_ly(mtcars, x = ~wt, y = ~mpg, type = "scatter", mode = "markers")
+```
+
+### Chart B
+```{r}
+plot_ly(iris, x = ~Sepal.Length, y = ~Sepal.Width, color = ~Species,
+        type = "scatter", mode = "markers")
+```
+
+## Row {data-height=350}
+
+### Table
+```{r}
+datatable(mtcars, options = list(pageLength = 5))
+```
+
+# Page 2
+
+## Column {data-width=600}
+
+### Gene Expression Heatmap
+```{r}
+mat <- matrix(rnorm(1000), nrow = 100)
+plot_ly(z = mat, type = "heatmap")
+```
+
+## Column {data-width=400}
+
+### Value Boxes
+```{r}
+valueBox(value = 1234, caption = "Total Genes", icon = "fa-dna", color = "primary")
+```
+
+```{r}
+valueBox(value = 567, caption = "DEGs", icon = "fa-chart-line", color = "warning")
+```
+
+### Gauge
+```{r}
+gauge(value = 75, min = 0, max = 100, symbol = '%',
+      gaugeSectors(success = c(80, 100), warning = c(40, 79), danger = c(0, 39)))
+```
+```
+
+## shinyWidgets for Enhanced Interactivity
+
+```{r}
+library(shiny)
+library(shinyWidgets)
+
+ui <- fluidPage(
+  titlePanel("Enhanced Visualization Dashboard"),
+
+  sidebarLayout(
+    sidebarPanel(
+      pickerInput("dataset",
+                 "Choose a dataset:",
+                 choices = c("mtcars", "iris", "airquality"),
+                 selected = "mtcars"),
+
+      sliderTextInput("range",
+                     "Select range:",
+                     choices = 1:10,
+                     selected = c(3, 7)),
+
+      prettyRadioButtons("plot_type",
+                        "Plot type:",
+                        choices = c("scatter", "box", "violin"),
+                        inline = TRUE,
+                        icon = icon("check")),
+
+      switchInput("show_legend",
+                 "Show legend",
+                 value = TRUE)
+    ),
+
+    mainPanel(
+      tabsetPanel(
+        tabPanel("Plot", plotlyOutput("main_plot")),
+        tabPanel("Data", DTOutput("data_table")),
+        tabPanel("Summary", verbatimTextOutput("summary"))
+      )
+    )
+  )
+)
+
+server <- function(input, output) {
+  data <- reactive({
+    get(input$dataset)
+  })
+
+  output$main_plot <- renderPlotly({
+    plot_ly(data(), x = ~get(names(data())[1]),
+           y = ~get(names(data())[2]),
+           type = "scatter", mode = "markers")
+  })
+
+  output$data_table <- renderDT({
+    datatable(data())
+  })
+
+  output$summary <- renderPrint({
+    summary(data())
+  })
+}
+
+shinyApp(ui, server)
+```
+
+# Summary
+
+This document covered advanced visualization techniques:
+
+**Interactive Visualizations**:
+- plotly for interactive charts
+- highcharter for complex visualizations
+- ggiraph for interactive ggplot2
+
+**Network Visualization**:
+- igraph and ggraph for network analysis
+- visNetwork for interactive networks
+- Biological network examples (PPI, pathways)
+
+**Genomic Visualizations**:
+- Gviz for genomic tracks
+- karyoploteR for whole-genome views
+- circlize for circular plots
+- ggbio for genomic data
+
+**Specialized Plots**:
+- ComplexHeatmap for advanced heatmaps
+- EnhancedVolcano for publication-quality volcano plots
+- Spatial transcriptomics visualization
+
+**Animated Visualizations**:
+- gganimate for ggplot2 animations
+- plotly animations
+- Time-series biological data
+
+**Dashboard Integration**:
+- flexdashboard layouts
+- shinyWidgets for enhanced interactivity
+- Complete dashboard examples
+
+**Key Principles**:
+- Choose appropriate visualization for data type
+- Make plots interactive when beneficial
+- Use color schemes appropriately
+- Ensure accessibility
+- Publication-quality output
+
+**Next Steps**: Specialized Statistical Methods
+
+# References
+
+- [plotly for R](https://plotly-r.com/)
+- [Gviz User Guide](https://bioconductor.org/packages/release/bioc/vignettes/Gviz/inst/doc/Gviz.html)
+- [ComplexHeatmap Complete Reference](https://jokergoo.github.io/ComplexHeatmap-reference/book/)
+- [gganimate Documentation](https://gganimate.com/)
+- [visNetwork Documentation](https://datastorm-open.github.io/visNetwork/)

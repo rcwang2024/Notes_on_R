@@ -1,0 +1,783 @@
+---
+title: "Reproducible Research in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+# 1. Principles of Reproducible Research
+
+Reproducible research means:
+- **Same data + Same code = Same results**
+- Others can verify your findings
+- You can return to your work months/years later
+- Increases transparency and trust in science
+
+Key components:
+- Version control
+- Documentation
+- Data management
+- Literate programming
+- Environment management
+
+# 2. R Markdown Basics
+
+R Markdown combines narrative text with code to create dynamic documents.
+
+## Creating an R Markdown Document
+
+```{r eval=FALSE}
+# In RStudio: File > New File > R Markdown
+```
+
+## YAML Header
+
+```yaml
+---
+title: "My Analysis"
+author: "Your Name"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+---
+```
+
+## Markdown Syntax
+
+```markdown
+# Header 1
+## Header 2
+### Header 3
+
+**Bold text**
+*Italic text*
+`Code`
+
+- Bullet point 1
+- Bullet point 2
+
+1. Numbered item 1
+2. Numbered item 2
+
+[Link text](https://example.com)
+
+![Image caption](path/to/image.png)
+```
+
+## Code Chunks
+
+````markdown
+```{r chunk-name, echo=TRUE, eval=TRUE}
+# R code here
+x <- 1:10
+mean(x)
+```
+````
+
+## Chunk Options
+
+```{r eval=FALSE}
+# Common options:
+# echo = TRUE/FALSE     # Show code
+# eval = TRUE/FALSE     # Run code
+# include = TRUE/FALSE  # Include output
+# warning = TRUE/FALSE  # Show warnings
+# message = TRUE/FALSE  # Show messages
+# fig.width = 7         # Figure width
+# fig.height = 5        # Figure height
+# fig.cap = "Caption"   # Figure caption
+# cache = TRUE/FALSE    # Cache results
+```
+
+## Inline Code
+
+```markdown
+The mean is `r mean(1:10)` and the sum is `r sum(1:10)`.
+```
+
+The mean is `r mean(1:10)` and the sum is `r sum(1:10)`.
+
+## Output Formats
+
+```yaml
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+  github_document: default
+```
+
+## Rendering
+
+```{r eval=FALSE}
+# Knit button in RStudio or:
+rmarkdown::render("document.Rmd")
+rmarkdown::render("document.Rmd", output_format = "pdf_document")
+```
+
+# 3. Advanced R Markdown
+
+## Parameters
+
+```yaml
+---
+title: "Parameterized Report"
+params:
+  species: "setosa"
+  min_sepal_length: 5.0
+---
+```
+
+```{r eval=FALSE}
+# Use parameters
+filtered_data <- iris %>%
+  filter(Species == params$species,
+         Sepal.Length >= params$min_sepal_length)
+
+# Render with parameters
+rmarkdown::render("report.Rmd",
+                  params = list(species = "virginica",
+                                min_sepal_length = 6.0))
+```
+
+## Child Documents
+
+```{r child="child_document.Rmd", eval=FALSE}
+```
+
+## Conditional Content
+
+```{r results='asis', eval=FALSE}
+if (some_condition) {
+  cat("## This section appears conditionally\n")
+  cat("Content here...\n")
+}
+```
+
+## Tables
+
+```{r}
+# knitr::kable
+library(knitr)
+kable(head(iris), caption = "First 6 rows of iris dataset")
+
+# kableExtra for more styling
+library(kableExtra)
+kable(head(iris)) %>%
+  kable_styling(bootstrap_options = c("striped", "hover")) %>%
+  row_spec(0, bold = TRUE, color = "white", background = "#4F81BD")
+```
+
+## Tabbed Sections
+
+```markdown
+## Results {.tabset}
+
+### Tab 1
+Content for tab 1
+
+### Tab 2
+Content for tab 2
+```
+
+## Mathematical Equations
+
+Inline: $E = mc^2$
+
+Display:
+$$\frac{-b \pm \sqrt{b^2 - 4ac}}{2a}$$
+
+# 4. Quarto
+
+Quarto is the next-generation R Markdown.
+
+```yaml
+---
+title: "Quarto Document"
+format:
+  html:
+    code-fold: true
+    toc: true
+  pdf: default
+---
+```
+
+```{r eval=FALSE}
+# Render Quarto
+quarto::quarto_render("document.qmd")
+```
+
+# 5. Version Control with Git
+
+## Git Basics
+
+```bash
+# Initialize repository
+git init
+
+# Check status
+git status
+
+# Add files
+git add file.R
+git add .  # Add all files
+
+# Commit changes
+git commit -m "Descriptive commit message"
+
+# View history
+git log
+git log --oneline
+
+# Create branch
+git branch feature-branch
+git checkout feature-branch
+# Or: git checkout -b feature-branch
+
+# Merge branch
+git checkout main
+git merge feature-branch
+
+# Push to remote
+git push origin main
+
+# Pull from remote
+git pull origin main
+
+# Clone repository
+git clone https://github.com/user/repo.git
+```
+
+## .gitignore
+
+```
+# R
+.Rhistory
+.RData
+.Rproj.user/
+
+# Data files (if large)
+*.csv
+*.rds
+data/
+
+# Output
+*.html
+*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+```
+
+## GitHub Integration
+
+```bash
+# Add remote
+git remote add origin https://github.com/username/repository.git
+
+# Push
+git push -u origin main
+
+# Create and push branch
+git checkout -b new-feature
+git push -u origin new-feature
+
+# Pull request (on GitHub website)
+```
+
+# 6. Project Organization
+
+## R Projects (.Rproj)
+
+```{r eval=FALSE}
+# Create new project in RStudio:
+# File > New Project > New Directory > New Project
+
+# Benefits:
+# - Sets working directory
+# - Isolates environment
+# - Easy to switch between projects
+```
+
+## Directory Structure
+
+```
+project/
+├── README.md
+├── project.Rproj
+├── data/
+│   ├── raw/
+│   └── processed/
+├── scripts/
+│   ├── 01_data_cleaning.R
+│   ├── 02_analysis.R
+│   └── 03_visualization.R
+├── notebooks/
+│   └── analysis.Rmd
+├── output/
+│   ├── figures/
+│   └── tables/
+├── functions/
+│   └── my_functions.R
+└── docs/
+    └── report.Rmd
+```
+
+## here Package
+
+```{r}
+library(here)
+
+# Automatically finds project root
+here()
+
+# Build paths
+data_path <- here("data", "raw", "dataset.csv")
+output_path <- here("output", "figures", "plot.png")
+
+# Read data
+# data <- read.csv(here("data", "raw", "data.csv"))
+
+# Save output
+# ggsave(here("output", "figures", "plot.png"))
+```
+
+# 7. Dependency Management
+
+## renv Package
+
+```{r eval=FALSE}
+# Initialize renv for project
+renv::init()
+
+# Install packages (they're tracked in renv.lock)
+install.packages("dplyr")
+
+# Take snapshot of current environment
+renv::snapshot()
+
+# Restore environment from renv.lock
+renv::restore()
+
+# Update packages
+renv::update()
+
+# Check status
+renv::status()
+```
+
+## Session Information
+
+```{r}
+# Always include session info in reports
+sessionInfo()
+
+# Or with devtools
+library(devtools)
+session_info()
+```
+
+## Docker for R
+
+```dockerfile
+FROM rocker/tidyverse:4.3.0
+
+# Install additional packages
+RUN R -e "install.packages('package_name')"
+
+# Copy project files
+COPY . /home/rstudio/project
+
+# Set working directory
+WORKDIR /home/rstudio/project
+```
+
+# 8. Data Management
+
+## Data Organization
+
+```{r eval=FALSE}
+# Keep raw data untouched
+raw_data <- read.csv(here("data", "raw", "original_data.csv"))
+
+# Save processed data
+processed_data <- clean_data(raw_data)
+saveRDS(processed_data, here("data", "processed", "clean_data.rds"))
+
+# Document data processing
+# Keep script: scripts/01_data_processing.R
+```
+
+## Data Documentation
+
+```{r eval=FALSE}
+# Create data dictionary
+data_dictionary <- data.frame(
+  Variable = names(dataset),
+  Description = c("Patient ID", "Age in years", ...),
+  Type = c("character", "numeric", ...),
+  Values = c("Unique ID", "18-90", ...)
+)
+
+write.csv(data_dictionary, here("docs", "data_dictionary.csv"))
+```
+
+## Checksums for Data Integrity
+
+```{r eval=FALSE}
+# Calculate MD5 checksum
+tools::md5sum(here("data", "raw", "data.csv"))
+
+# Verify data hasn't changed
+original_md5 <- "abc123..."
+current_md5 <- tools::md5sum(here("data", "raw", "data.csv"))
+identical(original_md5, current_md5)
+```
+
+# 9. Literate Programming Best Practices
+
+## Code Organization in Notebooks
+
+```{r eval=FALSE}
+# 1. Setup chunk (packages, options)
+library(tidyverse)
+library(here)
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE)
+
+# 2. Load data
+data <- read.csv(here("data", "data.csv"))
+
+# 3. Explore data
+glimpse(data)
+
+# 4. Clean data
+clean_data <- data %>% filter(!is.na(value))
+
+# 5. Analyze
+results <- analyze(clean_data)
+
+# 6. Visualize
+ggplot(results, aes(x, y)) + geom_point()
+
+# 7. Save outputs
+saveRDS(results, here("output", "results.rds"))
+```
+
+## Comments and Documentation
+
+```{r eval=FALSE}
+# Good comments explain WHY, not WHAT
+# Bad:
+x <- x + 1  # Add 1 to x
+
+# Good:
+x <- x + 1  # Adjust for 1-based indexing in output
+
+# Document functions
+#' Calculate summary statistics
+#'
+#' @param data A numeric vector
+#' @param na.rm Logical, remove NAs?
+#' @return A named vector of statistics
+#' @examples
+#' calc_stats(c(1, 2, 3, NA), na.rm = TRUE)
+calc_stats <- function(data, na.rm = FALSE) {
+  c(mean = mean(data, na.rm = na.rm),
+    sd = sd(data, na.rm = na.rm))
+}
+```
+
+## Notebook Template
+
+```markdown
+---
+title: "Analysis Title"
+author: "Author Name"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+# Executive Summary
+
+Brief overview of key findings.
+
+# Introduction
+
+Background and objectives.
+
+# Methods
+
+## Data
+
+Description of data sources.
+
+## Analysis
+
+Description of analytical approach.
+
+# Results
+
+## Exploratory Analysis
+
+```{r}
+# Code here
+```
+
+## Main Analysis
+
+```{r}
+# Code here
+```
+
+# Discussion
+
+Interpretation of results.
+
+# Conclusions
+
+Key takeaways.
+
+# Session Information
+
+```{r}
+sessionInfo()
+```
+
+# References
+```
+
+# 10. Automated Reporting
+
+## Parameterized Reports
+
+```{r eval=FALSE}
+# Create reports for multiple conditions
+species_list <- c("setosa", "versicolor", "virginica")
+
+for (sp in species_list) {
+  rmarkdown::render(
+    "species_report.Rmd",
+    params = list(species = sp),
+    output_file = paste0("report_", sp, ".html")
+  )
+}
+```
+
+## Scheduled Reports
+
+```{r eval=FALSE}
+# Use cronR or taskscheduleR for scheduling
+
+# Linux/Mac (cron)
+library(cronR)
+cmd <- cron_rscript("weekly_report.R")
+cron_add(cmd, frequency = "weekly", id = "weekly_report")
+
+# Windows (Task Scheduler)
+library(taskscheduleR)
+taskscheduler_create(taskname = "weekly_report",
+                     rscript = "weekly_report.R",
+                     schedule = "WEEKLY")
+```
+
+## Email Reports
+
+```{r eval=FALSE}
+library(blastula)
+
+# Create email
+email <- render_email("report.Rmd")
+
+# Send email
+smtp_send(
+  email,
+  from = "sender@example.com",
+  to = "recipient@example.com",
+  subject = "Weekly Report",
+  credentials = creds_file("email_creds")
+)
+```
+
+# 11. Testing and Validation
+
+## testthat Package
+
+```{r eval=FALSE}
+library(testthat)
+
+# Write tests
+test_that("mean calculation works", {
+  expect_equal(mean(c(1, 2, 3)), 2)
+  expect_true(mean(c(1, 2, 3)) > 0)
+  expect_error(mean("not numeric"))
+})
+
+# Test file structure
+test_that("data has expected columns", {
+  expect_true("Species" %in% names(iris))
+  expect_equal(ncol(iris), 5)
+})
+
+# Run all tests
+test_dir("tests/")
+```
+
+## Assertions
+
+```{r eval=FALSE}
+library(assertthat)
+
+# Validate assumptions
+assert_that(is.numeric(data$value))
+assert_that(all(data$age >= 0))
+assert_that(length(unique(data$id)) == nrow(data))
+```
+
+# 12. Collaboration and Sharing
+
+## GitHub for Collaboration
+
+```bash
+# Fork repository on GitHub
+# Clone your fork
+git clone https://github.com/yourusername/repo.git
+
+# Add upstream remote
+git remote add upstream https://github.com/original/repo.git
+
+# Sync with upstream
+git fetch upstream
+git merge upstream/main
+
+# Create pull request
+git checkout -b feature-branch
+# Make changes
+git add .
+git commit -m "Add feature"
+git push origin feature-branch
+# Create PR on GitHub
+```
+
+## Code Review
+
+- Clear commit messages
+- Small, focused pull requests
+- Document changes
+- Add tests
+- Request reviews
+
+## Research Compendium
+
+```
+research-project/
+├── README.md
+├── LICENSE
+├── DESCRIPTION
+├── data/
+├── analysis/
+├── figures/
+├── paper/
+└── supplementary/
+```
+
+# 13. Documentation Tools
+
+## pkgdown for Package Documentation
+
+```{r eval=FALSE}
+library(pkgdown)
+
+# Build documentation website
+build_site()
+```
+
+## bookdown for Long Documents
+
+```{r eval=FALSE}
+# Create bookdown project
+bookdown::create_bs4_book("my-book")
+
+# Render book
+bookdown::render_book("index.Rmd")
+```
+
+# 14. Reproducibility Checklist
+
+- [ ] Code is version controlled
+- [ ] Dependencies are documented (renv)
+- [ ] Raw data is preserved and documented
+- [ ] Analysis is documented (R Markdown)
+- [ ] Code is tested
+- [ ] Session information is included
+- [ ] README with instructions
+- [ ] Clear file organization
+- [ ] Appropriate license
+- [ ] Data and code are backed up
+- [ ] Results can be reproduced
+
+# Summary
+
+This document covered reproducible research:
+
+**R Markdown**:
+- Combine code and narrative
+- Multiple output formats
+- Parameterized reports
+
+**Quarto**:
+- Next-generation publishing
+
+**Version Control**:
+- Git for tracking changes
+- GitHub for collaboration
+
+**Project Organization**:
+- R Projects
+- Consistent structure
+- here package
+
+**Dependency Management**:
+- renv for packages
+- Session information
+- Docker containers
+
+**Best Practices**:
+- Document everything
+- Test code
+- Use meaningful names
+- Keep raw data safe
+
+**Automation**:
+- Parameterized reports
+- Scheduled analyses
+- Email notifications
+
+**Key Principles**:
+- Same data + code = same results
+- Document thoroughly
+- Version control everything
+- Make it easy to understand
+
+**Next Steps**: Proceed to Advanced Programming for functional programming, object-oriented programming, and metaprogramming.
+
+# References
+
+- [R Markdown: The Definitive Guide](https://bookdown.org/yihui/rmarkdown/)
+- [Happy Git with R](https://happygitwithr.com/)
+- [R Packages by Hadley Wickham](https://r-pkgs.org/)
+- [The Turing Way](https://the-turing-way.netlify.app/)

@@ -1,0 +1,741 @@
+---
+title: "Statistical Analysis in R"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+library(dplyr)
+library(ggplot2)
+```
+
+# 1. Descriptive Statistics
+
+## Measures of Central Tendency
+
+```{r}
+# Sample data
+data <- c(12, 15, 18, 20, 22, 25, 28, 30, 35, 40)
+
+# Mean
+mean(data)
+mean(data, na.rm = TRUE)  # Remove NAs
+
+# Median
+median(data)
+
+# Mode (no built-in function)
+get_mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+get_mode(c(1, 2, 2, 3, 3, 3, 4))
+
+# Weighted mean
+weights <- c(1, 1, 2, 2, 2, 2, 1, 1, 1, 1)
+weighted.mean(data, weights)
+```
+
+## Measures of Dispersion
+
+```{r}
+# Variance
+var(data)
+
+# Standard deviation
+sd(data)
+
+# Range
+range(data)
+diff(range(data))  # Range value
+
+# Interquartile range
+IQR(data)
+
+# Quantiles
+quantile(data)
+quantile(data, probs = c(0.25, 0.5, 0.75))
+quantile(data, probs = seq(0, 1, 0.1))  # Deciles
+
+# Coefficient of variation
+cv <- sd(data) / mean(data) * 100
+cv
+```
+
+## Summary Statistics
+
+```{r}
+# Five-number summary
+fivenum(data)
+
+# Detailed summary
+summary(data)
+
+# For data frames
+summary(mtcars)
+
+# Custom summary
+library(dplyr)
+mtcars %>%
+  summarise(
+    n = n(),
+    mean_mpg = mean(mpg),
+    sd_mpg = sd(mpg),
+    median_mpg = median(mpg),
+    min_mpg = min(mpg),
+    max_mpg = max(mpg),
+    q25 = quantile(mpg, 0.25),
+    q75 = quantile(mpg, 0.75)
+  )
+
+# By groups
+mtcars %>%
+  group_by(cyl) %>%
+  summarise(
+    n = n(),
+    mean_mpg = mean(mpg),
+    sd_mpg = sd(mpg)
+  )
+```
+
+## Distribution Shape
+
+```{r}
+# Skewness
+library(moments)
+skewness(data)
+
+# Kurtosis
+kurtosis(data)
+
+# Normality test
+shapiro.test(data)
+```
+
+# 2. Probability Distributions
+
+## Normal Distribution
+
+```{r}
+# Density
+dnorm(0, mean = 0, sd = 1)  # PDF at x=0
+
+# Cumulative probability
+pnorm(1.96, mean = 0, sd = 1)  # P(X <= 1.96)
+pnorm(1.96, mean = 0, sd = 1, lower.tail = FALSE)  # P(X > 1.96)
+
+# Quantile function (inverse CDF)
+qnorm(0.975, mean = 0, sd = 1)  # 97.5th percentile
+
+# Random generation
+set.seed(123)
+rnorm(10, mean = 0, sd = 1)
+
+# Visualize
+x <- seq(-4, 4, 0.01)
+plot(x, dnorm(x), type = "l", main = "Normal Distribution",
+     ylab = "Density", xlab = "x")
+```
+
+## Other Common Distributions
+
+```{r}
+# Uniform
+runif(10, min = 0, max = 1)
+
+# Binomial
+rbinom(10, size = 10, prob = 0.5)
+dbinom(5, size = 10, prob = 0.5)  # P(X = 5)
+
+# Poisson
+rpois(10, lambda = 3)
+dpois(3, lambda = 3)  # P(X = 3)
+
+# Exponential
+rexp(10, rate = 1)
+
+# Chi-square
+rchisq(10, df = 5)
+
+# Student's t
+rt(10, df = 10)
+
+# F distribution
+rf(10, df1 = 5, df2 = 10)
+```
+
+# 3. Hypothesis Testing
+
+## One-Sample Tests
+
+### One-Sample t-test
+
+```{r}
+# Test if mean differs from hypothesized value
+data <- rnorm(30, mean = 5, sd = 2)
+
+# Two-sided test
+t.test(data, mu = 5)
+
+# One-sided test
+t.test(data, mu = 5, alternative = "greater")
+t.test(data, mu = 5, alternative = "less")
+
+# Extract components
+result <- t.test(data, mu = 5)
+result$statistic
+result$p.value
+result$conf.int
+```
+
+### Wilcoxon Signed-Rank Test (Non-parametric)
+
+```{r}
+# For non-normal data
+wilcox.test(data, mu = 5)
+```
+
+## Two-Sample Tests
+
+### Independent Samples t-test
+
+```{r}
+# Create two groups
+group1 <- rnorm(30, mean = 5, sd = 2)
+group2 <- rnorm(30, mean = 6, sd = 2)
+
+# Assuming equal variances
+t.test(group1, group2, var.equal = TRUE)
+
+# Welch's t-test (unequal variances)
+t.test(group1, group2, var.equal = FALSE)
+
+# Using formula with data frame
+df <- data.frame(
+  value = c(group1, group2),
+  group = rep(c("A", "B"), each = 30)
+)
+t.test(value ~ group, data = df)
+```
+
+### Paired t-test
+
+```{r}
+# For matched pairs
+before <- rnorm(20, mean = 100, sd = 15)
+after <- before + rnorm(20, mean = 5, sd = 10)
+
+t.test(before, after, paired = TRUE)
+t.test(after - before, mu = 0)  # Equivalent
+```
+
+### Mann-Whitney U Test (Wilcoxon Rank-Sum)
+
+```{r}
+# Non-parametric alternative to t-test
+wilcox.test(group1, group2)
+```
+
+## Categorical Data Tests
+
+### Chi-Square Test of Independence
+
+```{r}
+# Create contingency table
+table_data <- matrix(c(20, 10, 15, 25), nrow = 2,
+                     dimnames = list(c("Male", "Female"),
+                                    c("Treatment", "Control")))
+table_data
+
+# Chi-square test
+chisq.test(table_data)
+
+# With correction
+chisq.test(table_data, correct = FALSE)
+
+# From data frame
+chisq.test(table(mtcars$cyl, mtcars$gear))
+```
+
+### Fisher's Exact Test
+
+```{r}
+# For small sample sizes
+fisher.test(table_data)
+```
+
+### Chi-Square Goodness of Fit
+
+```{r}
+# Test if observed frequencies match expected
+observed <- c(25, 30, 20, 25)
+expected_prob <- c(0.25, 0.25, 0.25, 0.25)
+
+chisq.test(observed, p = expected_prob)
+```
+
+## Multiple Group Comparisons
+
+### One-Way ANOVA
+
+```{r}
+# Compare means across multiple groups
+group_data <- data.frame(
+  value = c(rnorm(20, 5, 1), rnorm(20, 6, 1), rnorm(20, 7, 1)),
+  group = rep(c("A", "B", "C"), each = 20)
+)
+
+# ANOVA
+aov_result <- aov(value ~ group, data = group_data)
+summary(aov_result)
+
+# Post-hoc pairwise comparisons
+TukeyHSD(aov_result)
+
+# Plot
+plot(TukeyHSD(aov_result))
+```
+
+### Kruskal-Wallis Test (Non-parametric ANOVA)
+
+```{r}
+# Non-parametric alternative
+kruskal.test(value ~ group, data = group_data)
+
+# Post-hoc test
+pairwise.wilcox.test(group_data$value, group_data$group,
+                     p.adjust.method = "BH")
+```
+
+### Two-Way ANOVA
+
+```{r}
+# Two factors
+two_way_data <- data.frame(
+  value = rnorm(60),
+  factor1 = rep(c("A", "B"), each = 30),
+  factor2 = rep(rep(c("X", "Y", "Z"), each = 10), 2)
+)
+
+aov_2way <- aov(value ~ factor1 * factor2, data = two_way_data)
+summary(aov_2way)
+```
+
+## Multiple Testing Correction
+
+```{r}
+# Multiple p-values
+p_values <- c(0.001, 0.01, 0.03, 0.05, 0.10)
+
+# Bonferroni correction
+p.adjust(p_values, method = "bonferroni")
+
+# Benjamini-Hochberg (FDR)
+p.adjust(p_values, method = "BH")
+
+# Other methods
+p.adjust(p_values, method = "holm")
+p.adjust(p_values, method = "hochberg")
+```
+
+# 4. Correlation and Association
+
+## Pearson Correlation
+
+```{r}
+# For normally distributed continuous data
+cor(mtcars$mpg, mtcars$wt)
+
+# With significance test
+cor.test(mtcars$mpg, mtcars$wt)
+
+# Correlation matrix
+cor(mtcars[, c("mpg", "wt", "hp", "disp")])
+
+# Visualize
+library(corrplot)
+cor_matrix <- cor(mtcars[, c("mpg", "wt", "hp", "disp")])
+corrplot(cor_matrix, method = "circle")
+```
+
+## Spearman Correlation
+
+```{r}
+# For non-parametric or ordinal data
+cor(mtcars$mpg, mtcars$wt, method = "spearman")
+cor.test(mtcars$mpg, mtcars$wt, method = "spearman")
+```
+
+## Kendall's Tau
+
+```{r}
+# Another non-parametric correlation
+cor(mtcars$mpg, mtcars$wt, method = "kendall")
+cor.test(mtcars$mpg, mtcars$wt, method = "kendall")
+```
+
+# 5. Regression Analysis
+
+## Simple Linear Regression
+
+```{r}
+# Fit model
+model <- lm(mpg ~ wt, data = mtcars)
+
+# Summary
+summary(model)
+
+# Coefficients
+coef(model)
+confint(model)  # Confidence intervals
+
+# Predictions
+predict(model, newdata = data.frame(wt = c(2, 3, 4)))
+predict(model, newdata = data.frame(wt = c(2, 3, 4)),
+        interval = "confidence")
+
+# Residuals
+residuals(model)
+fitted(model)
+
+# Plot
+plot(mtcars$wt, mtcars$mpg)
+abline(model, col = "red")
+
+# Diagnostic plots
+par(mfrow = c(2, 2))
+plot(model)
+par(mfrow = c(1, 1))
+```
+
+## Multiple Linear Regression
+
+```{r}
+# Multiple predictors
+model_multi <- lm(mpg ~ wt + hp + cyl, data = mtcars)
+summary(model_multi)
+
+# With interaction
+model_interact <- lm(mpg ~ wt * hp, data = mtcars)
+summary(model_interact)
+
+# Polynomial regression
+model_poly <- lm(mpg ~ poly(wt, 2), data = mtcars)
+summary(model_poly)
+```
+
+## Model Comparison
+
+```{r}
+model1 <- lm(mpg ~ wt, data = mtcars)
+model2 <- lm(mpg ~ wt + hp, data = mtcars)
+model3 <- lm(mpg ~ wt + hp + cyl, data = mtcars)
+
+# Compare with ANOVA
+anova(model1, model2, model3)
+
+# AIC comparison
+AIC(model1, model2, model3)
+
+# BIC comparison
+BIC(model1, model2, model3)
+```
+
+## Assumptions and Diagnostics
+
+```{r}
+# Normality of residuals
+shapiro.test(residuals(model))
+
+# Homoscedasticity
+library(lmtest)
+bptest(model)  # Breusch-Pagan test
+
+# Multicollinearity (VIF)
+library(car)
+vif(model_multi)
+
+# Outliers and influential points
+# Cook's distance
+cooks.distance(model)
+plot(cooks.distance(model))
+
+# Leverage
+hatvalues(model)
+```
+
+## Logistic Regression
+
+```{r}
+# Binary outcome
+# Create binary outcome
+mtcars$high_mpg <- ifelse(mtcars$mpg > median(mtcars$mpg), 1, 0)
+
+# Fit logistic regression
+logit_model <- glm(high_mpg ~ wt + hp, data = mtcars, family = binomial)
+summary(logit_model)
+
+# Odds ratios
+exp(coef(logit_model))
+exp(confint(logit_model))
+
+# Predictions (probabilities)
+predict(logit_model, type = "response")
+
+# Predictions (classes)
+predicted_class <- ifelse(predict(logit_model, type = "response") > 0.5, 1, 0)
+
+# Confusion matrix
+table(Predicted = predicted_class, Actual = mtcars$high_mpg)
+
+# Model performance
+library(pROC)
+roc_obj <- roc(mtcars$high_mpg, predict(logit_model, type = "response"))
+auc(roc_obj)
+plot(roc_obj)
+```
+
+## Generalized Linear Models (GLM)
+
+```{r}
+# Poisson regression (count data)
+poisson_model <- glm(hp ~ wt + cyl, data = mtcars, family = poisson)
+summary(poisson_model)
+
+# Gamma regression (positive continuous)
+gamma_model <- glm(mpg ~ wt + hp, data = mtcars, family = Gamma)
+summary(gamma_model)
+```
+
+# 6. Survival Analysis
+
+```{r}
+library(survival)
+
+# Create survival object
+# Simulated survival data
+surv_data <- data.frame(
+  time = c(5, 8, 12, 15, 20, 25, 30, 35, 40, 45),
+  status = c(1, 1, 0, 1, 1, 0, 1, 0, 1, 1),  # 1 = event, 0 = censored
+  group = rep(c("A", "B"), each = 5)
+)
+
+# Survival object
+surv_obj <- Surv(time = surv_data$time, event = surv_data$status)
+
+# Kaplan-Meier survival curve
+km_fit <- survfit(surv_obj ~ group, data = surv_data)
+summary(km_fit)
+
+# Plot survival curves
+plot(km_fit, col = c("red", "blue"), main = "Kaplan-Meier Survival Curves")
+legend("topright", legend = c("Group A", "Group B"), col = c("red", "blue"), lty = 1)
+
+# Log-rank test
+survdiff(surv_obj ~ group, data = surv_data)
+
+# Cox proportional hazards model
+cox_model <- coxph(surv_obj ~ group, data = surv_data)
+summary(cox_model)
+```
+
+# 7. Non-Parametric Tests
+
+```{r}
+# Sign test
+library(BSDA)
+# SIGN.test(before, after)
+
+# Friedman test (non-parametric repeated measures ANOVA)
+# Create repeated measures data
+repeated_data <- matrix(rnorm(60), ncol = 3)
+friedman.test(repeated_data)
+
+# Kolmogorov-Smirnov test (compare distributions)
+ks.test(rnorm(100), "pnorm")  # Test against normal
+ks.test(rnorm(100), rnorm(100))  # Two-sample
+```
+
+# 8. Power Analysis
+
+```{r}
+library(pwr)
+
+# Power for t-test
+# Given: effect size, alpha, power → calculate sample size
+pwr.t.test(d = 0.5, sig.level = 0.05, power = 0.8, type = "two.sample")
+
+# Given: effect size, alpha, n → calculate power
+pwr.t.test(d = 0.5, sig.level = 0.05, n = 64, type = "two.sample")
+
+# Power for ANOVA
+pwr.anova.test(k = 3, f = 0.25, sig.level = 0.05, power = 0.8)
+
+# Power for correlation
+pwr.r.test(r = 0.3, sig.level = 0.05, power = 0.8)
+
+# Power for chi-square
+pwr.chisq.test(w = 0.3, df = 2, sig.level = 0.05, power = 0.8)
+```
+
+# 9. Bayesian Statistics
+
+```{r eval=FALSE}
+library(rstan)
+library(brms)
+
+# Bayesian linear regression
+bayesian_model <- brm(mpg ~ wt + hp, data = mtcars, family = gaussian())
+summary(bayesian_model)
+
+# Posterior distributions
+plot(bayesian_model)
+
+# Predictions with uncertainty
+posterior_predict(bayesian_model, newdata = data.frame(wt = 3, hp = 100))
+```
+
+# 10. Mixed Models
+
+```{r}
+library(lme4)
+
+# Linear mixed model (random intercepts)
+# Example with simulated hierarchical data
+set.seed(123)
+hier_data <- data.frame(
+  subject = rep(1:10, each = 5),
+  time = rep(1:5, 10),
+  value = rnorm(50) + rep(rnorm(10), each = 5)
+)
+
+lmer_model <- lmer(value ~ time + (1|subject), data = hier_data)
+summary(lmer_model)
+
+# Random slopes and intercepts
+lmer_model2 <- lmer(value ~ time + (time|subject), data = hier_data)
+summary(lmer_model2)
+
+# Generalized linear mixed model
+glmer_model <- glmer(cbind(value > 0, value <= 0) ~ time + (1|subject),
+                     data = hier_data, family = binomial)
+```
+
+# 11. Time Series Analysis
+
+```{r}
+# Create time series
+ts_data <- ts(rnorm(100), start = c(2020, 1), frequency = 12)
+
+# Plot
+plot(ts_data)
+
+# Decomposition
+decomposed <- decompose(ts_data)
+plot(decomposed)
+
+# ACF and PACF
+acf(ts_data)
+pacf(ts_data)
+
+# ARIMA model
+library(forecast)
+arima_model <- auto.arima(ts_data)
+summary(arima_model)
+
+# Forecast
+forecasted <- forecast(arima_model, h = 12)
+plot(forecasted)
+```
+
+# 12. Bootstrap and Resampling
+
+```{r}
+library(boot)
+
+# Define statistic function
+mean_func <- function(data, indices) {
+  return(mean(data[indices]))
+}
+
+# Bootstrap
+boot_result <- boot(data = mtcars$mpg, statistic = mean_func, R = 1000)
+boot_result
+
+# Confidence interval
+boot.ci(boot_result, type = "perc")
+
+# Plot
+plot(boot_result)
+```
+
+# 13. Effect Sizes
+
+```{r}
+library(effectsize)
+
+# Cohen's d (standardized mean difference)
+cohens_d(mpg ~ am, data = mtcars)
+
+# Eta squared (ANOVA effect size)
+aov_result <- aov(mpg ~ factor(cyl), data = mtcars)
+eta_squared(aov_result)
+
+# Odds ratio
+# For contingency tables
+```
+
+# Summary
+
+This document covered comprehensive statistical analysis:
+
+**Descriptive Statistics**:
+- Central tendency, dispersion, distribution shape
+
+**Probability Distributions**:
+- Normal, binomial, Poisson, etc.
+
+**Hypothesis Testing**:
+- t-tests, chi-square, ANOVA
+- Parametric and non-parametric tests
+- Multiple testing correction
+
+**Correlation**:
+- Pearson, Spearman, Kendall
+
+**Regression**:
+- Linear, multiple, logistic
+- GLMs, mixed models
+
+**Survival Analysis**:
+- Kaplan-Meier, Cox regression
+
+**Advanced Topics**:
+- Power analysis
+- Bayesian statistics
+- Time series
+- Bootstrap
+
+**Key Principles**:
+- Check assumptions
+- Use appropriate tests
+- Report effect sizes
+- Correct for multiple testing
+- Visualize results
+
+**Next Steps**: Proceed to Bioconductor Ecosystem for bioinformatics-specific analysis.
+
+# References
+
+- [R for Data Science](https://r4ds.had.co.nz/)
+- [An Introduction to Statistical Learning](https://www.statlearning.com/)
+- [Modern Statistics for Modern Biology](https://www.huber.embl.de/msmb/)
+- [The R Book by Michael Crawley](https://www.wiley.com/en-us/The+R+Book%2C+2nd+Edition-p-9780470973929)

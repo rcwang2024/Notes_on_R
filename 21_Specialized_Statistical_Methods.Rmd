@@ -1,0 +1,1163 @@
+---
+title: "Specialized Statistical Methods"
+author: "Computational Bioinformatics Notes"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+    theme: flatly
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE, eval = FALSE)
+```
+
+# 1. Bayesian Analysis with Stan
+
+## Introduction to Stan
+
+```{r}
+# Install
+install.packages("rstan")
+install.packages("bayesplot")
+install.packages("loo")
+
+library(rstan)
+library(bayesplot)
+
+# Enable parallel computation
+options(mc.cores = parallel::detectCores())
+rstan_options(auto_write = TRUE)
+```
+
+## Simple Linear Regression
+
+```{r}
+# Stan model code
+stan_model_code <- "
+data {
+  int<lower=0> N;              // number of observations
+  vector[N] x;                  // predictor
+  vector[N] y;                  // outcome
+}
+parameters {
+  real alpha;                   // intercept
+  real beta;                    // slope
+  real<lower=0> sigma;          // error sd
+}
+model {
+  // Priors
+  alpha ~ normal(0, 10);
+  beta ~ normal(0, 10);
+  sigma ~ cauchy(0, 5);
+
+  // Likelihood
+  y ~ normal(alpha + beta * x, sigma);
+}
+generated quantities {
+  vector[N] y_pred;             // posterior predictions
+  vector[N] log_lik;            // log-likelihood for LOO
+
+  for (i in 1:N) {
+    y_pred[i] = normal_rng(alpha + beta * x[i], sigma);
+    log_lik[i] = normal_lpdf(y[i] | alpha + beta * x[i], sigma);
+  }
+}
+"
+
+# Prepare data
+N <- nrow(mtcars)
+stan_data <- list(
+  N = N,
+  x = mtcars$wt,
+  y = mtcars$mpg
+)
+
+# Compile and fit model
+fit <- stan(
+  model_code = stan_model_code,
+  data = stan_data,
+  chains = 4,
+  iter = 2000,
+  warmup = 1000,
+  thin = 1
+)
+
+# Check results
+print(fit)
+plot(fit)
+
+# Diagnostics
+check_hmc_diagnostics(fit)
+traceplot(fit, pars = c("alpha", "beta", "sigma"))
+
+# Posterior distributions
+posterior <- extract(fit)
+str(posterior)
+
+# Plot posterior
+library(bayesplot)
+mcmc_areas(fit, pars = c("alpha", "beta", "sigma"), prob = 0.95)
+
+# Posterior predictive checks
+y_pred <- posterior$y_pred
+ppc_dens_overlay(stan_data$y, y_pred[1:100, ])
+```
+
+## Hierarchical Model
+
+```{r}
+# Hierarchical linear model (varying intercepts)
+hierarchical_model <- "
+data {
+  int<lower=0> N;                    // number of observations
+  int<lower=0> J;                    // number of groups
+  int<lower=1,upper=J> group[N];     // group indicator
+  vector[N] x;                       // predictor
+  vector[N] y;                       // outcome
+}
+parameters {
+  vector[J] alpha;                   // group intercepts
+  real beta;                         // common slope
+  real<lower=0> sigma;               // individual-level error
+  real mu_alpha;                     // mean intercept
+  real<lower=0> sigma_alpha;         // sd of intercepts
+}
+model {
+  // Hyperpriors
+  mu_alpha ~ normal(0, 10);
+  sigma_alpha ~ cauchy(0, 5);
+
+  // Priors
+  alpha ~ normal(mu_alpha, sigma_alpha);
+  beta ~ normal(0, 10);
+  sigma ~ cauchy(0, 5);
+
+  // Likelihood
+  for (i in 1:N) {
+    y[i] ~ normal(alpha[group[i]] + beta * x[i], sigma);
+  }
+}
+"
+
+# Prepare data
+stan_data <- list(
+  N = nrow(mtcars),
+  J = length(unique(mtcars$cyl)),
+  group = as.integer(factor(mtcars$cyl)),
+  x = mtcars$wt,
+  y = mtcars$mpg
+)
+
+# Fit model
+fit_hier <- stan(
+  model_code = hierarchical_model,
+  data = stan_data,
+  chains = 4,
+  iter = 2000
+)
+
+# Extract group-level effects
+alpha_samples <- extract(fit_hier, "alpha")$alpha
+colMeans(alpha_samples)
+
+# Plot group intercepts
+mcmc_intervals(fit_hier, regex_pars = "alpha")
+```
+
+## Logistic Regression
+
+```{r}
+logistic_model <- "
+data {
+  int<lower=0> N;
+  vector[N] x;
+  int<lower=0,upper=1> y[N];
+}
+parameters {
+  real alpha;
+  real beta;
+}
+model {
+  alpha ~ normal(0, 10);
+  beta ~ normal(0, 10);
+  y ~ bernoulli_logit(alpha + beta * x);
+}
+generated quantities {
+  vector[N] y_pred;
+  for (i in 1:N) {
+    y_pred[i] = bernoulli_rng(inv_logit(alpha + beta * x[i]));
+  }
+}
+"
+
+# Example data
+mtcars$vs_binary <- mtcars$vs
+
+stan_data <- list(
+  N = nrow(mtcars),
+  x = mtcars$wt,
+  y = mtcars$vs_binary
+)
+
+fit_logistic <- stan(
+  model_code = logistic_model,
+  data = stan_data,
+  chains = 4,
+  iter = 2000
+)
+
+print(fit_logistic)
+```
+
+## Model Comparison with LOO
+
+```{r}
+library(loo)
+
+# Extract log-likelihood
+log_lik_1 <- extract_log_lik(fit, parameter_name = "log_lik")
+
+# Compute LOO
+loo_1 <- loo(log_lik_1)
+print(loo_1)
+
+# Compare models
+loo_compare(loo_1, loo_2)
+
+# WAIC
+waic_1 <- waic(log_lik_1)
+print(waic_1)
+```
+
+## brms: Bayesian Regression Models
+
+```{r}
+library(brms)
+
+# Simpler interface to Stan
+# Linear regression
+fit_brm <- brm(
+  mpg ~ wt + hp,
+  data = mtcars,
+  family = gaussian(),
+  prior = c(
+    prior(normal(0, 10), class = "Intercept"),
+    prior(normal(0, 5), class = "b"),
+    prior(cauchy(0, 5), class = "sigma")
+  ),
+  chains = 4,
+  iter = 2000
+)
+
+summary(fit_brm)
+plot(fit_brm)
+
+# Posterior predictive checks
+pp_check(fit_brm)
+
+# Hierarchical model
+fit_hier_brm <- brm(
+  mpg ~ wt + (1 | cyl),
+  data = mtcars,
+  family = gaussian(),
+  chains = 4,
+  iter = 2000
+)
+
+summary(fit_hier_brm)
+
+# Generalized linear models
+fit_logistic_brm <- brm(
+  vs ~ wt + hp,
+  data = mtcars,
+  family = bernoulli(),
+  chains = 4,
+  iter = 2000
+)
+
+# Zero-inflated Poisson
+fit_zip <- brm(
+  count ~ predictor + (1 | group),
+  data = my_data,
+  family = zero_inflated_poisson(),
+  chains = 4
+)
+
+# Robust regression with Student-t errors
+fit_robust <- brm(
+  y ~ x,
+  data = my_data,
+  family = student(),
+  chains = 4
+)
+```
+
+# 2. Causal Inference
+
+## Propensity Score Matching
+
+```{r}
+library(MatchIt)
+library(optmatch)
+
+# Example data
+set.seed(123)
+n <- 1000
+data <- data.frame(
+  treat = rbinom(n, 1, 0.5),
+  x1 = rnorm(n),
+  x2 = rnorm(n),
+  x3 = rnorm(n)
+)
+data$y <- data$treat * 2 + data$x1 + data$x2 + rnorm(n)
+
+# Propensity score matching
+m.out <- matchit(
+  treat ~ x1 + x2 + x3,
+  data = data,
+  method = "nearest",
+  distance = "logit",
+  caliper = 0.1
+)
+
+# Check balance
+summary(m.out)
+plot(m.out, type = "jitter")
+plot(m.out, type = "hist")
+
+# Extract matched data
+matched_data <- match.data(m.out)
+
+# Estimate treatment effect
+library(lmtest)
+library(sandwich)
+
+fit <- lm(y ~ treat + x1 + x2 + x3, data = matched_data, weights = weights)
+coeftest(fit, vcov. = vcovHC(fit, type = "HC3"))
+
+# Alternative: full matching
+m.out_full <- matchit(
+  treat ~ x1 + x2 + x3,
+  data = data,
+  method = "full"
+)
+
+# Optimal matching
+m.out_optimal <- matchit(
+  treat ~ x1 + x2 + x3,
+  data = data,
+  method = "optimal",
+  ratio = 1
+)
+```
+
+## Inverse Probability Weighting
+
+```{r}
+library(ipw)
+library(survey)
+
+# Estimate propensity scores
+ps_model <- glm(treat ~ x1 + x2 + x3,
+               data = data,
+               family = binomial())
+
+data$ps <- predict(ps_model, type = "response")
+
+# Calculate IPW weights
+data$ipw <- ifelse(data$treat == 1,
+                   1 / data$ps,
+                   1 / (1 - data$ps))
+
+# Stabilized weights
+data$ipw_stab <- ifelse(data$treat == 1,
+                        mean(data$treat) / data$ps,
+                        (1 - mean(data$treat)) / (1 - data$ps))
+
+# Check weight distribution
+summary(data$ipw_stab)
+hist(data$ipw_stab)
+
+# Trim extreme weights
+data$ipw_trim <- pmin(data$ipw_stab, quantile(data$ipw_stab, 0.99))
+
+# Estimate treatment effect with IPW
+design <- svydesign(ids = ~1, weights = ~ipw_trim, data = data)
+svyglm(y ~ treat, design = design)
+
+# Check balance
+library(cobalt)
+bal.tab(treat ~ x1 + x2 + x3,
+       data = data,
+       weights = "ipw_trim",
+       method = "weighting")
+
+love.plot(treat ~ x1 + x2 + x3,
+         data = data,
+         weights = data$ipw_trim,
+         binary = "std")
+```
+
+## Difference-in-Differences
+
+```{r}
+# Panel data example
+panel_data <- data.frame(
+  id = rep(1:100, each = 10),
+  time = rep(1:10, 100),
+  treat = rep(c(rep(0, 50), rep(1, 50)), each = 10),
+  post = rep(c(rep(0, 5), rep(1, 5)), 100)
+)
+
+panel_data$y <- panel_data$treat * panel_data$post * 3 +
+                panel_data$time * 0.5 +
+                rnorm(1000)
+
+# Difference-in-differences
+did_model <- lm(y ~ treat * post + factor(time), data = panel_data)
+summary(did_model)
+
+# With fixed effects
+library(fixest)
+
+did_fe <- feols(y ~ treat:post | id + time, data = panel_data)
+summary(did_fe)
+
+# Parallel trends test (pre-treatment)
+pre_data <- panel_data[panel_data$post == 0, ]
+pre_trends <- lm(y ~ treat * time, data = pre_data)
+summary(pre_trends)
+
+# Event study
+panel_data$rel_time <- panel_data$time - 5  # Treatment at time 5
+
+event_study <- feols(
+  y ~ i(rel_time, treat, ref = -1) | id + time,
+  data = panel_data
+)
+
+iplot(event_study)
+```
+
+## Instrumental Variables
+
+```{r}
+library(AER)
+library(ivreg)
+
+# Example: endogenous treatment
+n <- 1000
+z <- rnorm(n)  # Instrument
+u <- rnorm(n)  # Unobserved confounder
+
+x <- z + u + rnorm(n)  # Endogenous predictor
+y <- x + u + rnorm(n)  # Outcome
+
+data_iv <- data.frame(y = y, x = x, z = z)
+
+# Naive OLS (biased)
+ols <- lm(y ~ x, data = data_iv)
+summary(ols)
+
+# Two-stage least squares
+tsls <- ivreg(y ~ x | z, data = data_iv)
+summary(tsls, diagnostics = TRUE)
+
+# Multiple instruments
+z2 <- rnorm(n)
+x <- z + z2 + u + rnorm(n)
+y <- x + u + rnorm(n)
+
+data_iv2 <- data.frame(y = y, x = x, z1 = z, z2 = z2)
+
+tsls2 <- ivreg(y ~ x | z1 + z2, data = data_iv2)
+summary(tsls2, diagnostics = TRUE)
+
+# Test for weak instruments
+# F-statistic should be > 10
+first_stage <- lm(x ~ z1 + z2, data = data_iv2)
+anova(first_stage)
+```
+
+## Regression Discontinuity Design
+
+```{r}
+library(rdd)
+library(rdrobust)
+
+# Sharp RD design
+n <- 1000
+x <- rnorm(n)  # Running variable
+cutoff <- 0
+treat <- ifelse(x >= cutoff, 1, 0)
+y <- treat * 2 + x + rnorm(n)
+
+data_rd <- data.frame(x = x, y = y, treat = treat)
+
+# Visualize discontinuity
+library(ggplot2)
+ggplot(data_rd, aes(x = x, y = y, color = factor(treat))) +
+  geom_point(alpha = 0.5) +
+  geom_vline(xintercept = cutoff, linetype = "dashed") +
+  geom_smooth(method = "lm") +
+  theme_minimal()
+
+# RD estimation
+rd_est <- RDestimate(y ~ x, data = data_rd, cutpoint = cutoff)
+summary(rd_est)
+plot(rd_est)
+
+# Robust RD with rdrobust
+rd_robust <- rdrobust(y = data_rd$y, x = data_rd$x, c = cutoff)
+summary(rd_robust)
+
+# Bandwidth selection
+rdbwselect(y = data_rd$y, x = data_rd$x, c = cutoff)
+
+# Fuzzy RD (imperfect compliance)
+# Treatment is not perfectly determined by cutoff
+treat_fuzzy <- rbinom(n, 1, plogis((x - cutoff) * 2))
+y_fuzzy <- treat_fuzzy * 2 + x + rnorm(n)
+
+data_rd_fuzzy <- data.frame(x = x, y = y_fuzzy, treat = treat_fuzzy)
+
+rd_fuzzy <- rdrobust(y = data_rd_fuzzy$y,
+                    x = data_rd_fuzzy$x,
+                    c = cutoff,
+                    fuzzy = data_rd_fuzzy$treat)
+summary(rd_fuzzy)
+```
+
+# 3. Spatial Statistics
+
+## Spatial Autocorrelation
+
+```{r}
+library(sp)
+library(spdep)
+
+# Example spatial data
+set.seed(123)
+coords <- cbind(runif(100, 0, 10), runif(100, 0, 10))
+colnames(coords) <- c("x", "y")
+
+# Create spatial points
+sp_data <- SpatialPointsDataFrame(
+  coords = coords,
+  data = data.frame(
+    value = rnorm(100) + coords[, 1] * 0.5  # Spatial trend
+  )
+)
+
+# Create spatial weights matrix
+# K-nearest neighbors
+nb_k <- knn2nb(knearneigh(coords, k = 5))
+w_k <- nb2listw(nb_k)
+
+# Distance-based
+nb_d <- dnearneigh(coords, 0, 2)
+w_d <- nb2listw(nb_d)
+
+# Moran's I test
+moran.test(sp_data$value, w_k)
+
+# Moran's I plot
+moran.plot(sp_data$value, w_k)
+
+# Local Moran's I (LISA)
+local_moran <- localmoran(sp_data$value, w_k)
+sp_data$local_i <- local_moran[, 1]
+sp_data$local_p <- local_moran[, 5]
+
+# Plot significant clusters
+library(ggplot2)
+library(sf)
+
+sp_sf <- st_as_sf(sp_data)
+
+ggplot(sp_sf) +
+  geom_sf(aes(color = local_i, size = ifelse(local_p < 0.05, 2, 1))) +
+  scale_color_gradient2(low = "blue", high = "red", mid = "white") +
+  theme_minimal()
+
+# Geary's C
+geary.test(sp_data$value, w_k)
+```
+
+## Spatial Regression Models
+
+```{r}
+library(spatialreg)
+
+# Generate data with spatial lag
+set.seed(123)
+n <- 100
+coords <- cbind(runif(n, 0, 10), runif(n, 0, 10))
+nb <- knn2nb(knearneigh(coords, k = 5))
+w <- nb2listw(nb)
+
+x <- rnorm(n)
+y_spatial <- 0.5 * lag.listw(w, rnorm(n)) + x + rnorm(n, sd = 0.5)
+
+data_spatial <- data.frame(y = y_spatial, x = x)
+
+# Spatial lag model (SAR)
+sar_model <- lagsarlm(y ~ x, data = data_spatial, listw = w)
+summary(sar_model)
+
+# Spatial error model (SEM)
+sem_model <- errorsarlm(y ~ x, data = data_spatial, listw = w)
+summary(sem_model)
+
+# Spatial Durbin model
+sdm_model <- lagsarlm(y ~ x, data = data_spatial, listw = w, type = "mixed")
+summary(sdm_model)
+
+# Model comparison
+AIC(sar_model, sem_model, sdm_model)
+
+# Impacts (direct, indirect, total)
+impacts(sar_model, listw = w)
+```
+
+## Geostatistics and Kriging
+
+```{r}
+library(gstat)
+library(sp)
+
+# Generate spatial data
+set.seed(123)
+coords <- expand.grid(x = seq(0, 10, 0.5), y = seq(0, 10, 0.5))
+n <- nrow(coords)
+
+# Simulate spatial process with known variogram
+library(geoR)
+sim_data <- grf(n = n, grid = coords, cov.pars = c(1, 2))
+
+data_geo <- data.frame(
+  x = coords$x,
+  y = coords$y,
+  z = sim_data$data
+)
+
+coordinates(data_geo) <- ~x + y
+
+# Empirical variogram
+v <- variogram(z ~ 1, data_geo)
+plot(v)
+
+# Fit variogram model
+v.fit <- fit.variogram(v, vgm(psill = 1, model = "Exp", range = 2, nugget = 0.1))
+plot(v, v.fit)
+
+# Ordinary kriging
+grid <- expand.grid(
+  x = seq(0, 10, 0.2),
+  y = seq(0, 10, 0.2)
+)
+coordinates(grid) <- ~x + y
+gridded(grid) <- TRUE
+
+k <- krige(z ~ 1, data_geo, grid, model = v.fit)
+
+# Plot predictions
+library(ggplot2)
+k_df <- as.data.frame(k)
+
+ggplot(k_df, aes(x = x, y = y, fill = var1.pred)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(title = "Kriging Predictions", fill = "Predicted")
+
+# Prediction variance
+ggplot(k_df, aes(x = x, y = y, fill = var1.var)) +
+  geom_tile() +
+  scale_fill_viridis_c() +
+  theme_minimal() +
+  labs(title = "Prediction Variance", fill = "Variance")
+
+# Universal kriging (with trend)
+v.uk <- variogram(z ~ x + y, data_geo)
+v.uk.fit <- fit.variogram(v.uk, vgm(1, "Exp", 2, 0.1))
+
+k.uk <- krige(z ~ x + y, data_geo, grid, model = v.uk.fit)
+```
+
+## Spatial Point Patterns
+
+```{r}
+library(spatstat)
+
+# Create point pattern
+set.seed(123)
+pp <- rpoispp(lambda = 100)  # Homogeneous Poisson process
+
+plot(pp, main = "Point Pattern")
+
+# Summary statistics
+summary(pp)
+
+# Intensity
+intensity(pp)
+
+# Quadrat test for homogeneity
+quadrat.test(pp, nx = 4, ny = 4)
+
+# K-function (Ripley's K)
+K <- Kest(pp)
+plot(K)
+
+# L-function (variance-stabilized K)
+L <- Lest(pp)
+plot(L)
+
+# Pair correlation function
+g <- pcf(pp)
+plot(g)
+
+# Inhomogeneous point process
+# Intensity depends on location
+lambda_func <- function(x, y) {
+  100 * exp(-((x - 0.5)^2 + (y - 0.5)^2) / 0.1)
+}
+
+pp_inhom <- rpoispp(lambda_func)
+plot(pp_inhom)
+
+# Estimate intensity
+lambda <- density(pp_inhom)
+plot(lambda)
+
+# Inhomogeneous K-function
+K_inhom <- Kinhom(pp_inhom, lambda = lambda)
+plot(K_inhom)
+
+# Fit point process model
+# Poisson process
+fit_pois <- ppm(pp ~ 1)
+summary(fit_pois)
+
+# Inhomogeneous Poisson
+fit_inhom <- ppm(pp_inhom ~ polynom(x, y, 2))
+summary(fit_inhom)
+
+# Cluster process (Thomas process)
+fit_thomas <- kppm(pp ~ 1, clusters = "Thomas")
+summary(fit_thomas)
+```
+
+# 4. Survival Analysis (Advanced)
+
+## Parametric Survival Models
+
+```{r}
+library(survival)
+library(flexsurv)
+
+# Generate survival data
+set.seed(123)
+n <- 200
+time <- rweibull(n, shape = 1.5, scale = 100)
+status <- rbinom(n, 1, 0.7)
+x <- rnorm(n)
+group <- sample(c("A", "B"), n, replace = TRUE)
+
+surv_data <- data.frame(time = time, status = status, x = x, group = group)
+
+# Weibull regression
+weibull_model <- flexsurvreg(Surv(time, status) ~ x + group,
+                             data = surv_data,
+                             dist = "weibull")
+
+summary(weibull_model)
+plot(weibull_model)
+
+# Log-normal
+lnorm_model <- flexsurvreg(Surv(time, status) ~ x + group,
+                           data = surv_data,
+                           dist = "lognormal")
+
+# Gamma
+gamma_model <- flexsurvreg(Surv(time, status) ~ x + group,
+                          data = surv_data,
+                          dist = "gamma")
+
+# Generalized gamma (most flexible)
+gengamma_model <- flexsurvreg(Surv(time, status) ~ x + group,
+                             data = surv_data,
+                             dist = "gengamma")
+
+# Model comparison
+AIC(weibull_model, lnorm_model, gamma_model, gengamma_model)
+```
+
+## Frailty Models
+
+```{r}
+library(survival)
+
+# Generate clustered survival data
+set.seed(123)
+n_clusters <- 50
+n_per_cluster <- 4
+
+cluster_id <- rep(1:n_clusters, each = n_per_cluster)
+frailty <- rep(rgamma(n_clusters, shape = 2, scale = 0.5), each = n_per_cluster)
+
+time <- rexp(n_clusters * n_per_cluster, rate = frailty * 0.01)
+status <- rbinom(n_clusters * n_per_cluster, 1, 0.7)
+x <- rnorm(n_clusters * n_per_cluster)
+
+frailty_data <- data.frame(
+  time = time,
+  status = status,
+  x = x,
+  cluster = cluster_id
+)
+
+# Cox model with frailty
+frailty_model <- coxph(Surv(time, status) ~ x + frailty(cluster),
+                      data = frailty_data)
+
+summary(frailty_model)
+
+# Gamma frailty
+frailty_gamma <- coxph(Surv(time, status) ~ x + frailty(cluster, distribution = "gamma"),
+                      data = frailty_data)
+
+# Gaussian frailty
+frailty_gauss <- coxph(Surv(time, status) ~ x + frailty(cluster, distribution = "gaussian"),
+                      data = frailty_data)
+```
+
+## Competing Risks
+
+```{r}
+library(cmprsk)
+library(survival)
+
+# Simulate competing risks data
+set.seed(123)
+n <- 500
+time <- rexp(n, rate = 0.01)
+cause <- sample(1:3, n, replace = TRUE, prob = c(0.5, 0.3, 0.2))
+status <- ifelse(runif(n) < 0.7, cause, 0)  # 0 = censored
+
+x1 <- rnorm(n)
+x2 <- rbinom(n, 1, 0.5)
+
+cr_data <- data.frame(
+  time = time,
+  status = status,
+  x1 = x1,
+  x2 = x2
+)
+
+# Cumulative incidence function
+cif <- cuminc(ftime = cr_data$time,
+             fstatus = cr_data$status,
+             group = cr_data$x2)
+
+plot(cif, main = "Cumulative Incidence")
+
+# Fine-Gray model for subdistribution hazards
+fg_model <- crr(ftime = cr_data$time,
+               fstatus = cr_data$status,
+               cov1 = cbind(cr_data$x1, cr_data$x2),
+               failcode = 1)  # Model for event type 1
+
+summary(fg_model)
+
+# Cause-specific Cox models
+# Model for cause 1
+cs_model1 <- coxph(Surv(time, status == 1) ~ x1 + x2, data = cr_data)
+
+# Model for cause 2
+cs_model2 <- coxph(Surv(time, status == 2) ~ x1 + x2, data = cr_data)
+
+summary(cs_model1)
+summary(cs_model2)
+```
+
+## Multi-state Models
+
+```{r}
+library(mstate)
+
+# Example: illness-death model
+# States: 1 = healthy, 2 = ill, 3 = dead
+
+# Transition matrix
+tmat <- transMat(x = list(
+  c(2, 3),    # From state 1 to states 2, 3
+  c(3)        # From state 2 to state 3
+), names = c("Healthy", "Ill", "Dead"))
+
+print(tmat)
+
+# Simulate data
+set.seed(123)
+n <- 200
+
+# Transition 1->2
+time_12 <- rexp(n, rate = 0.02)
+status_12 <- rbinom(n, 1, 0.6)
+
+# Transition 1->3
+time_13 <- rexp(n, rate = 0.01)
+status_13 <- rbinom(n, 1, 0.4)
+
+# Transition 2->3
+time_23 <- rexp(n, rate = 0.03)
+status_23 <- rbinom(n, 1, 0.7)
+
+# Prepare data in long format
+ms_data <- data.frame(
+  id = rep(1:n, each = 2),
+  from = rep(c(1, 1), n),
+  to = rep(c(2, 3), n),
+  trans = rep(c(1, 2), n),
+  Tstart = 0,
+  Tstop = c(rbind(time_12, time_13)),
+  status = c(rbind(status_12, status_13)),
+  x = rep(rnorm(n), each = 2)
+)
+
+# Fit multi-state model
+msfit <- coxph(Surv(Tstart, Tstop, status) ~ x + strata(trans),
+              data = ms_data)
+
+summary(msfit)
+
+# Predict transition probabilities
+# New covariate pattern
+newdata <- data.frame(x = 0, trans = 1:2, strata = 1:2)
+
+# Cumulative hazards
+cumhaz <- msfit(msfit, trans = tmat)
+
+# State probabilities
+pstate <- probtrans(cumhaz, predt = 0)
+plot(pstate)
+```
+
+# 5. Time Series Analysis (Advanced)
+
+## GARCH Models
+
+```{r}
+library(rugarch)
+
+# Simulate GARCH(1,1) data
+set.seed(123)
+spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(0, 0))
+)
+
+sim_garch <- ugarchpath(spec, n.sim = 1000)
+returns <- as.numeric(fitted(sim_garch))
+
+# Fit GARCH model
+garch_spec <- ugarchspec(
+  variance.model = list(model = "sGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 1))
+)
+
+garch_fit <- ugarchfit(spec = garch_spec, data = returns)
+
+# Results
+summary(garch_fit)
+plot(garch_fit)
+
+# Forecast
+garch_forecast <- ugarchforecast(garch_fit, n.ahead = 10)
+plot(garch_forecast)
+
+# GJR-GARCH (asymmetric)
+gjr_spec <- ugarchspec(
+  variance.model = list(model = "gjrGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 1))
+)
+
+gjr_fit <- ugarchfit(spec = gjr_spec, data = returns)
+
+# EGARCH
+egarch_spec <- ugarchspec(
+  variance.model = list(model = "eGARCH", garchOrder = c(1, 1)),
+  mean.model = list(armaOrder = c(1, 1))
+)
+
+egarch_fit <- ugarchfit(spec = egarch_spec, data = returns)
+
+# Model comparison
+infocriteria(garch_fit)
+infocriteria(gjr_fit)
+infocriteria(egarch_fit)
+```
+
+## State Space Models
+
+```{r}
+library(KFAS)
+
+# Local level model
+set.seed(123)
+n <- 100
+true_level <- cumsum(rnorm(n, 0, 0.1))
+y <- true_level + rnorm(n, 0, 0.5)
+
+# Define state space model
+model <- SSModel(
+  y ~ SSMtrend(degree = 1, Q = NA),
+  H = NA
+)
+
+# Fit model
+fit <- fitSSM(model, inits = c(0, 0))
+
+# Kalman filter
+kf <- KFS(fit$model)
+
+# Plot
+plot(y, type = "l", col = "gray")
+lines(kf$alphahat, col = "red")
+lines(true_level, col = "blue", lty = 2)
+legend("topleft",
+       legend = c("Observed", "Filtered", "True"),
+       col = c("gray", "red", "blue"),
+       lty = c(1, 1, 2))
+
+# Forecasting
+pred <- predict(fit$model, n.ahead = 10)
+
+# Local linear trend
+model_trend <- SSModel(
+  y ~ SSMtrend(degree = 2, Q = list(NA, NA)),
+  H = NA
+)
+
+fit_trend <- fitSSM(model_trend, inits = c(0, 0, 0))
+kf_trend <- KFS(fit_trend$model)
+
+# Seasonal component
+y_seasonal <- true_level + 5 * sin(2 * pi * (1:n) / 12) + rnorm(n, 0, 0.5)
+
+model_seasonal <- SSModel(
+  y_seasonal ~ SSMtrend(degree = 1, Q = NA) +
+               SSMseasonal(period = 12, sea.type = "dummy", Q = NA),
+  H = NA
+)
+
+fit_seasonal <- fitSSM(model_seasonal, inits = rep(0, 3))
+kf_seasonal <- KFS(fit_seasonal$model)
+
+plot(y_seasonal, type = "l")
+lines(kf_seasonal$alphahat[, 1], col = "red")
+```
+
+## Vector Autoregression (VAR)
+
+```{r}
+library(vars)
+
+# Multivariate time series
+data(Canada)
+
+# Select VAR order
+VARselect(Canada, lag.max = 10, type = "const")
+
+# Fit VAR model
+var_model <- VAR(Canada, p = 2, type = "const")
+summary(var_model)
+
+# Diagnostics
+serial.test(var_model, lags.pt = 10, type = "PT.asymptotic")
+arch.test(var_model, lags.multi = 5)
+normality.test(var_model)
+
+# Stability
+roots <- roots(var_model)
+all(abs(roots) < 1)  # Should be TRUE for stability
+
+# Granger causality
+causality(var_model, cause = "e")
+
+# Impulse response functions
+irf_result <- irf(var_model, impulse = "e", response = "prod", n.ahead = 20)
+plot(irf_result)
+
+# Forecast error variance decomposition
+fevd_result <- fevd(var_model, n.ahead = 20)
+plot(fevd_result)
+
+# Forecasting
+var_forecast <- predict(var_model, n.ahead = 10, ci = 0.95)
+plot(var_forecast)
+
+# Structural VAR
+amat <- diag(4)
+amat[2, 1] <- NA
+amat[3, 1] <- NA
+amat[4, 1] <- NA
+
+svar_model <- SVAR(var_model, Amat = amat, Bmat = NULL, max.iter = 100)
+summary(svar_model)
+```
+
+# Summary
+
+This document covered specialized statistical methods:
+
+**Bayesian Analysis**:
+- Stan for custom Bayesian models
+- Hierarchical models
+- brms for simplified interface
+- Model comparison with LOO/WAIC
+
+**Causal Inference**:
+- Propensity score matching
+- Inverse probability weighting
+- Difference-in-differences
+- Instrumental variables
+- Regression discontinuity
+
+**Spatial Statistics**:
+- Spatial autocorrelation (Moran's I, Geary's C)
+- Spatial regression models
+- Geostatistics and kriging
+- Point pattern analysis
+
+**Advanced Survival Analysis**:
+- Parametric survival models
+- Frailty models
+- Competing risks
+- Multi-state models
+
+**Advanced Time Series**:
+- GARCH models
+- State space models
+- Vector autoregression
+
+**Key Principles**:
+- Choose appropriate method for causal question
+- Account for spatial/temporal dependence
+- Use Bayesian methods when appropriate
+- Validate model assumptions
+- Consider uncertainty in estimates
+
+**Next Steps**: Production and Deployment
+
+# References
+
+- [Stan User's Guide](https://mc-stan.org/docs/stan-users-guide/index.html)
+- [Causal Inference: The Mixtape](https://mixtape.scunning.com/)
+- [Applied Spatial Data Analysis with R](http://www.asdar-book.org/)
+- [Survival Analysis: A Self-Learning Text](https://www.springer.com/gp/book/9781441966452)
+- [Introduction to Time Series and Forecasting](https://www.springer.com/gp/book/9783319298528)
