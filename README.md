@@ -40,6 +40,14 @@ A complete collection of 22 R Markdown modules covering everything from R fundam
 ### Production (Module 22)
 22. **[Production & Deployment](22_Production_Deployment.Rmd)** - REST APIs with plumber, Docker, CI/CD, monitoring, security
 
+### Real-World Applications (Module 23)
+23. **[Real-World Projects](23_Real_World_Projects.Rmd)** - Complete end-to-end project examples:
+   - RNA-seq differential expression pipeline
+   - Customer churn prediction system
+   - Clinical trial survival analysis
+   - COVID-19 real-time dashboard
+   - Automated variant annotation pipeline
+
 ---
 
 ## 🎯 Who Is This For?
@@ -112,6 +120,7 @@ BiocManager::install()
 - **Module 18**: Complete, production-ready bioinformatics pipelines
 - **Module 21**: Cutting-edge statistical methods (Bayesian, causal inference)
 - **Module 20**: Advanced interactive and genomic visualizations
+- **Module 23**: 5 complete real-world project examples with full code
 
 ### Most Practical for Bioinformatics
 - **Module 7**: Bioconductor ecosystem (DESeq2, edgeR, Seurat)
@@ -125,7 +134,7 @@ BiocManager::install()
 
 ## 🔧 Key Features
 
-✅ **Comprehensive Coverage** - 22 modules, 15,000+ lines of code
+✅ **Comprehensive Coverage** - 23 modules, 18,000+ lines of code
 ✅ **Practical Examples** - Real-world workflows and complete pipelines
 ✅ **Copy-Paste Ready** - All code examples are functional and tested
 ✅ **Modern Best Practices** - Tidyverse, tidymodels, current Bioconductor packages
@@ -150,25 +159,25 @@ BiocManager::install()
 ### For Bioinformaticians
 ```
 1-5 (Foundation) → 7 (Bioconductor) → 18 (Pipelines)
-→ 16 (Toolkit) → 19 (Cloud) → 22 (Production)
+→ 16 (Toolkit) → 19 (Cloud) → 23 (Projects) → 22 (Production)
 ```
 
 ### For Data Scientists
 ```
 1-6 (Foundation + Stats) → 8 (ML) → 16 (Toolkit)
-→ 17 (Advanced) → 13 (Shiny) → 22 (Production)
+→ 17 (Advanced) → 23 (Projects) → 13 (Shiny) → 22 (Production)
 ```
 
 ### For Statistical Researchers
 ```
 1-6 (Foundation + Stats) → 14 (Reporting) → 15 (Packages)
-→ 21 (Specialized Stats) → 9 (Reproducibility)
+→ 21 (Specialized Stats) → 23 (Projects) → 9 (Reproducibility)
 ```
 
 ### For Software Engineers
 ```
 1-4 (R Basics) → 11 (Performance) → 19 (Cloud/Big Data)
-→ 22 (Production) → 10 (Advanced Programming)
+→ 23 (Projects) → 22 (Production) → 10 (Advanced Programming)
 ```
 
 ## 💡 Tips for Learning
@@ -253,4 +262,4 @@ Happy learning! 🚀
 ---
 
 *Last updated: 2025*
-*Total modules: 22 | Total content: 15,000+ lines of code*
+*Total modules: 23 | Total content: 18,000+ lines of code*
