@@ -93,7 +93,7 @@ Use individual modules as quick reference guides for specific tasks.
 
 1. **Clone or download this repository:**
 ```bash
-git clone https://github.com/yourusername/Notes_on_R.git
+git clone https://github.com/rcwang2024/Notes_on_R.git
 cd Notes_on_R
 ```
 
